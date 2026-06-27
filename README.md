@@ -1,6 +1,3 @@
-# llm-inference-explorer
-Interactive educational visualization of the LLM inference pipeline.
-
 # 🧠 LLM Inference Explorer
 
 An interactive educational visualization that helps explain, at a high
