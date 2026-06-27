@@ -54,6 +54,12 @@ before diving into more advanced topics such as attention mechanisms, KV
 cache, embeddings or interpretability research, then it has achieved its
 purpose.
 
+## Disclaimer
+
+This project is an educational visualization designed to build an intuitive understanding of the LLM inference process.
+
+It does **not** expose proprietary model internals, hidden states, weights, activations, or chain-of-thought. Sections labelled as **Educational** or **Illustrative** are conceptual abstractions intended for learning, not direct observations of how any specific model internally operates.
+
 ## About this project
 
 This is my **first AI-assisted (\"vibe coded\") project** and also the
@@ -65,6 +71,12 @@ attempt to demonstrate advanced software engineering skills.
 I come from a cybersecurity and infrastructure background, and this
 project reflects my curiosity about understanding AI systems through
 visualization and interactive learning.
+
+## Requirements
+
+To use this application, simply provide your own OpenAI-compatible API key.
+
+Your API key is stored locally in your browser for convenience and is **never included** in this repository.
 
 ## Related Work
 
@@ -87,12 +99,17 @@ such as:
 These projects provide significantly deeper insight into transformer
 architectures and inspired me to continue learning.
 
-## A small note
+## Future Improvements
 
-If you have suggestions, spot inaccuracies, or think a concept could be
-represented more clearly, I would genuinely appreciate your feedback.
+Some ideas I hope to explore in future versions include:
 
-This project will continue evolving as my understanding of LLMs grows.
+- Real tokenizer integration (e.g. tiktoken)
+- Support for additional OpenAI-compatible providers and local LLMs
+- More accurate educational visualizations
+- Additional explanations for concepts such as embeddings, attention, KV cache and temperature
+- Improved accessibility and mobile responsiveness
+
+As I continue learning about LLMs, I hope this project will continue improving alongside my understanding.
 
 ## Connect & Feedback
 
@@ -103,7 +120,7 @@ Likewise, if you spot any inaccuracies, misleading explanations, or
 think a concept could be presented more clearly, please don\'t hesitate
 to let me know. I am still learning, and I welcome constructive feedback
 from anyone with experience in AI, machine learning, or software
-engineering.
+engineering. I would genuinely appreciate your feedback.
 
 You are welcome to:
 
