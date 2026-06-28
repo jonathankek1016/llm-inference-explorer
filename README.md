@@ -78,6 +78,22 @@ To use this application, simply provide your own OpenAI-compatible API key.
 
 Your API key is stored locally in your browser for convenience and is **never included** in this repository.
 
+## Features
+
+- Interactive visualization of the LLM inference pipeline
+- Step-by-step educational walkthrough of response generation
+- Distinguishes between real observable behaviour, educational abstractions and UI presentation
+- Browser-based application (no installation required)
+- OpenAI-compatible API support
+- Users provide their own API key (never included in this repository)
+
+## Tech Stack
+
+- HTML5
+- CSS3
+- Vanilla JavaScript
+- OpenAI-compatible Chat Completions API
+
 ## Related Work
 
 Many excellent projects explore transformer internals and model
@@ -91,10 +107,10 @@ perspective aimed at newcomers.
 I encourage anyone interested in learning more to also explore projects
 such as:
 
--   Transformer Explainer
--   BertViz
--   InTraVisTo
--   Other transformer visualization and interpretability tools
+- [Transformer Explainer](https://github.com/poloclub/transformer-explainer)
+- [BertViz](https://github.com/jessevig/bertviz)
+- [OpenAI Tokenizer](https://platform.openai.com/tokenizer)
+- Other transformer visualization and interpretability tools
 
 These projects provide significantly deeper insight into transformer
 architectures and inspired me to continue learning.
@@ -103,11 +119,14 @@ architectures and inspired me to continue learning.
 
 Some ideas I hope to explore in future versions include:
 
-- Real tokenizer integration (e.g. tiktoken)
-- Support for additional OpenAI-compatible providers and local LLMs
-- More accurate educational visualizations
-- Additional explanations for concepts such as embeddings, attention, KV cache and temperature
-- Improved accessibility and mobile responsiveness
+- Support for additional OpenAI-compatible providers (e.g. Anthropic, Google Gemini, OpenRouter and other compatible APIs)
+- Support for local LLMs through OpenAI-compatible endpoints (e.g. Ollama)
+- Image understanding / multimodal input support
+- Real tokenizer integration (e.g. tiktoken) instead of simplified token visualization
+- More accurate educational visualizations while maintaining a clear distinction between observable behaviour and conceptual abstractions
+- Additional explanations for concepts such as embeddings, attention, KV cache, temperature and sampling
+- Improved mobile responsiveness and tablet support
+- General UI/UX improvements based on community feedback
 
 As I continue learning about LLMs, I hope this project will continue improving alongside my understanding.
 
@@ -126,7 +145,7 @@ You are welcome to:
 
 -   Open a GitHub Issue
 -   Start a GitHub Discussion (if enabled)
--   Reach out to me on LinkedIn
+-   Connect with me on [LinkedIn](https://www.linkedin.com/in/jonathan-kek/)
 
 I enjoy meeting people who are curious about AI, cybersecurity,
 infrastructure, and technology in general.
@@ -138,3 +157,8 @@ If this visualization helped you understand even one concept that
 previously felt confusing, then I would consider this project a success.
 
 Thank you for stopping by.
+
+### Find me online
+
+- GitHub: https://github.com/jonathankek1016
+- LinkedIn: https://www.linkedin.com/in/jonathan-kek/
