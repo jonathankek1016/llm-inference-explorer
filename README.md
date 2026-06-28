@@ -115,6 +115,22 @@ such as:
 These projects provide significantly deeper insight into transformer
 architectures and inspired me to continue learning.
 
+## Known Issues
+
+The current prototype is functional, but a few UI and state-management issues are still being investigated:
+
+* **Interrupted generation state**
+
+  * If generation is interrupted midway, the UI may clear the previous output before continuing from the partially generated response, resulting in inconsistent display behaviour.
+
+* **Occasional placeholder response**
+
+  * Under certain conditions, the assistant may incorrectly display the placeholder response ("Sure! Here's .....") instead of the expected model output.
+
+* **Log probability viewport**
+
+  * The log probability visualization automatically scrolls during generation, but the current token is not always kept fully within the visible viewport. As a result, users may need to manually scroll to follow the active token.
+
 ## Future Improvements
 
 Some ideas I hope to explore in future versions include:
