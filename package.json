@@ -1,0 +1,30 @@
+{
+  "name": "llm-inference-explorer",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "verify:preview": "node scripts/verify-preview.mjs",
+    "verify:visual": "node scripts/verify-visual.mjs",
+    "verify:palettes": "node scripts/verify-palettes.mjs",
+    "format": "prettier --write src tests scripts *.json playwright.config.ts index.html README.md docs",
+    "format:check": "prettier --check src tests scripts *.json playwright.config.ts index.html README.md docs"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "5.3.0",
+    "@fontsource-variable/manrope": "5.3.0",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/three": "0.186.0",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}

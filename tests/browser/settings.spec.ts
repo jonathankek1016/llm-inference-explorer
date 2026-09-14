@@ -1,0 +1,103 @@
+import { test, expect } from '@playwright/test';
+
+test('display intensity autosaves independently and outside dismissal discards connection drafts', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const dialog = page.locator('#settings-dialog');
+  const intensity = page.getByRole('slider', { name: 'Grid intensity', exact: true });
+  const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('.object-label').first().waitFor();
+  await open();
+  await expect(intensity).toHaveValue('50');
+  await page.locator('#provider-url').fill('https://example.com/v1');
+  await page.locator('#provider-model').fill('saved-model');
+  await page.locator('#provider-key').fill('fixture-memory-key');
+  await page.locator('#provider-stream').uncheck();
+  await page.locator('#provider-logprobs').check();
+  await page.getByRole('button', { name: 'Save connection', exact: true }).click();
+  const saved = await page.evaluate(() => localStorage.getItem('atlas-provider'));
+  await open();
+  await page.locator('#provider-url').fill('invalid-url');
+  await page.locator('#provider-model').fill('');
+  await page.locator('#provider-key').fill('unsaved-secret');
+  await page.locator('#provider-stream').check();
+  await page.locator('#provider-logprobs').uncheck();
+  await intensity.fill('80');
+  await intensity.press('ArrowLeft');
+  await expect(page.locator('#grid-intensity-value')).toHaveText('79%');
+  expect(await page.evaluate(() => localStorage.getItem('atlas-grid-intensity'))).toBe('79');
+  expect(await page.evaluate(() => localStorage.getItem('atlas-provider'))).toBe(saved);
+  // Interior panel padding must remain inert, as must a drag ending outside.
+  let rect = (await dialog.boundingBox())!;
+  await page.mouse.click(rect.x + 8, rect.y + 8);
+  await expect(dialog).toBeVisible();
+  await page.mouse.move(rect.x + 8, rect.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(2, 2);
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(2, 2);
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('#provider-key')).toHaveValue('');
+  await open();
+  await expect(page.locator('#provider-url')).toHaveValue('https://example.com/v1');
+  await expect(page.locator('#provider-model')).toHaveValue('saved-model');
+  await expect(page.locator('#provider-key')).toHaveValue('fixture-memory-key');
+  await expect(page.locator('#provider-stream')).not.toBeChecked();
+  await expect(page.locator('#provider-logprobs')).toBeChecked();
+  await expect(intensity).toHaveValue('79');
+  await page.getByLabel('Show ground grid', { exact: true }).uncheck();
+  await expect(intensity).toBeDisabled();
+  await expect(intensity).toHaveValue('79');
+  await page.reload();
+  await open();
+  await expect(intensity).toBeDisabled();
+  await expect(intensity).toHaveValue('79');
+  await expect(page.locator('#provider-key')).toHaveValue('');
+  const storage = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+  expect(storage).not.toContain('fixture-memory-key');
+  expect(storage).not.toContain('unsaved-secret');
+  await page.getByLabel('Show ground grid', { exact: true }).check();
+  await expect(intensity).toBeEnabled();
+  await expect(intensity).toHaveValue('79');
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  const canvas = page.locator('#viewport canvas');
+  const labels = () =>
+    page
+      .locator('.object-label')
+      .evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).style.transform));
+  const beforeLabels = await labels();
+  const before = await canvas.screenshot();
+  await open();
+  await intensity.fill('0');
+  await page.mouse.click(2, 2);
+  const zero = await canvas.screenshot();
+  expect(Buffer.compare(before, zero)).not.toBe(0);
+  expect(await labels()).toEqual(beforeLabels);
+  await open();
+  await page.getByLabel('Show ground grid', { exact: true }).uncheck();
+  await page.mouse.click(2, 2);
+  expect(Buffer.compare(zero, await canvas.screenshot())).toBe(0);
+  await open();
+  await page.getByLabel('Show ground grid', { exact: true }).check();
+  await intensity.fill('100');
+  await page.mouse.click(2, 2);
+  expect(Buffer.compare(zero, await canvas.screenshot())).not.toBe(0);
+  await page.locator('#theme').click();
+  await open();
+  await expect(intensity).toHaveValue('100');
+  await page.mouse.click(2, 2);
+  // Exercise all four outside margins at phone size.
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [x, y] of [
+    [1, 422],
+    [389, 422],
+    [195, 1],
+    [195, 843],
+  ]) {
+    await open();
+    await page.mouse.click(x, y);
+    await expect(dialog).not.toBeVisible();
+  }
+});

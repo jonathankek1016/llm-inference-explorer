@@ -1,180 +1,111 @@
-# 🧠 LLM Inference Explorer
+# LLM Inference Explorer
 
-An interactive educational visualization that helps explain, at a high
-level, how modern Large Language Models (LLMs) generate responses.
+**What happens after I press Enter?** Explore the answer in an interactive 3D atlas, from your device and network to server hardware, model computation and the response coming home.
 
-Rather than focusing on the mathematics or low-level implementation
-details of transformer architectures, this project aims to answer a
-simpler question:
+The light-first interface uses floating HTML panels around procedural Three.js scenes. A working demo opens immediately, with no API key. An optional personal BYOK connection supplies real text responses; the atlas remains an educational illustration.
 
-> **\"What happens after I press Enter?\"**
+## Run locally
 
-It visualizes the journey from a user\'s prompt to the model\'s final
-response through an intuitive pipeline, while clearly distinguishing
-between:
+Use Node.js **22.18+** (or a newer supported release) and npm. The implementation was verified with Node 26.3.0 on Windows and Microsoft Edge.
 
--   🟢 Real observable model behaviour and API outputs
--   🔵 Educational conceptual abstractions
--   🟡 Simplified illustrations of complex internal processes
--   ⚪ UI and presentation effects
+```sh
+npm ci
+npm run dev
+```
 
-The goal is not to reverse engineer proprietary models such as GPT,
-Claude or Gemini, nor to expose hidden reasoning or chain-of-thought.
-Instead, it serves as an educational companion for people beginning to
-learn how transformer-based language models work.
+Open **http://127.0.0.1:5173**. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
+
+```sh
+npm run build       # TypeScript check and production bundle in dist/
+npm run preview     # Preview the production bundle, normally port 4173
+npm test            # Deterministic state, Unicode and provider tests
+npm run test:e2e    # Browser interaction and controlled mock API tests
+npm run verify:preview # Screenshots and runtime audit; requires the preview on port 4173
+```
+
+Browser tests use installed Microsoft Edge on Windows. On other platforms, run `npx playwright install chromium` once. The browser suite starts Vite if needed. Screenshots are written to the ignored `artifacts/` directory. No test makes a paid model request.
+
+## Explore the atlas
+
+| View                | What you can inspect                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request journey     | Laptop, Wi-Fi/router, representative backbone and data centre, outbound request and return path                                                               |
+| Hardware            | Service ingress, rack, accelerator board and model weights; an alternate on-device route                                                                      |
+| Model               | Context preparation, toy token IDs, embeddings and position, prompt prefill, repeated transformer blocks, per-layer KV cache, projection, sampling and decode |
+| Transformer block   | Two normalisations, attention, MLP and two residual additions, with an explode control and a synthetic causal matrix                                          |
+| Tools & MCP         | Simulated tool-call intent, application host, client/server communication, calculator result and another model step                                           |
+| Understand an image | A bundled landscape, visual patches/encoder and connection to language context                                                                                |
+| Generate an image   | Representative text conditioning, seeded noise, illustrative refinement and image decoding                                                                    |
+
+Choose a scenario at the top. Use **Journey** to navigate the stages or **Chat** to run a sample. The inspector offers **Learn**, **Data**, and **Sources**, with deeper explanations and links between concepts.
+
+- Drag the scene to orbit, scroll/pinch to zoom, and right-drag to pan.
+- Click a model object or its label to inspect it. **Inspect inference** and **Inspect this block** enter nested views. Breadcrumbs and the scale controls return to broader views.
+- Search with the search button or `/`. Try `KV cache`, `attention`, `GPU`, `MLP`, or `MCP`.
+- Use the **Colour palette** button beside the theme toggle to choose Original Sage, Powder Blue, Soft Lavender, Dusty Rose, Warm Apricot, Monochrome or a custom accent. The palette persists across reloads and works in both modes; dark surfaces stay neutral. Custom text and surface shades adapt for contrast.
+- Open **Settings → Display** to show or hide the faint ground grid. This preference saves immediately, independently of model connection settings. The 3D environment spans the window beneath the floating frosted interface.
+- Play/pause, previous/next, seek, speed, and replay affect teaching playback only. With the page focused, Space toggles playback and the arrow keys step through it.
+- Manual camera interaction turns off **Follow journey**. Re-enable it to restore guided framing. Camera controls reset, fit, focus and toggle labels.
+- Collapse panels when you want more open space. The desktop journey panel can be resized at its lower-right corner. Tablet and mobile use dismissible sheets; Escape closes overlays.
+- Tab reaches controls; arrow keys switch tabs. The system reduced-motion preference suppresses decorative travel animation. A rendering failure retains the HTML journey and inspector.
+
+## Demo and live behaviour
+
+**Demo** returns the selected scenario's labelled sample response, even if you type a different question. It is a repeatable teaching fixture, not an in-browser language model. The tool and image scenarios do not connect to external services or accounts.
+
+For **Live API**, open Settings and use **Model connection** to enter a Chat Completions compatible base URL and a model identifier, then supply your own key if required. Streaming and logprobs are separately configurable. The browser calls `/chat/completions` directly; the provider must allow browser requests through its CORS policy. Native provider APIs with different schemas need an adapter. Changing the illustrative cloud/local route does **not** change your configured API endpoint.
+
+There is one answer request per send, with no narration request and no silent retry for unsupported capabilities. Missing logprobs leave a usable text response and an explicit “not available.” Provider-returned candidate probabilities are not renormalised, and the selected token stays identified even when another candidate has higher probability.
+
+Live context contains the current prompt and up to four complete earlier live exchanges, bounded by 12,000 user/assistant content characters. The prompt field accepts up to 6,000 UTF-16 code units. The fixed system instruction and provider chat-template overhead are additional; this character limit is not a tokenizer-based context limit. Demo, legacy-restored, cancelled and errored exchanges are excluded. **Context & received data** shows the policy, client receipt events, optional usage and available candidates.
+
+**Stop request** aborts local receipt where possible and preserves partial text. Clear chat cancels active work. Generation IDs prevent stale completions from changing a newer run. Pausing the atlas does not stop a remote request; local cancellation cannot guarantee that the provider stopped computation or billing.
+
+Keys remain in the current tab's memory and disappear on reload. The old prototype's `ai-key` entry is removed rather than silently migrated. Theme, non-secret endpoint settings and conversation history are saved locally. Legacy conversation text is restored for display, labelled as excluded from sent context. Clear chat removes the current saved conversation.
+
+## Evidence and boundaries
+
+- **Observed:** locally captured user input, actual returned text, optional usage/logprobs, and client-measured receipt times.
+- **Illustrative:** infrastructure placement, model diagrams, toy IDs, synthetic probabilities and attention, cache counts, tool traces and image fixtures.
+- **Playback:** deliberate timing, camera transitions and animated travel. This is not provider latency, throughput or packet telemetry.
+
+The tokenizer is explicitly a deterministic **UTF-8 byte toy**, with IDs 0–255. It preserves valid Unicode and whitespace and is not BPE, provider tokenisation or a billing estimate. The sampling experiment uses stable softmax, an explicit zero-temperature greedy case and a seed; it cannot alter an answer already received.
+
+The block order follows a representative pre-normalised decoder layout informed by LLaMA. Six visible model blocks are a drawing choice, not a model specification. Inference does not update trained weights. Context and KV caches are not permanent conversational memory, databases or stores of finished answers. Nothing exposes hidden chain-of-thought, proprietary activations, real cache contents or hardware utilisation.
+
+Image understanding uses a representative encoder/connector path. Image generation is a latent-diffusion-style illustration using locally authored art and seeded noise; its frames are not genuine intermediate model states. Other architectures differ.
+
+## Implementation
+
+Vite + TypeScript + direct Three.js keep the original small browser-app footprint without adding a framework or backend.
+
+| Module                                          | Responsibility                                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/content.ts`                                | Concept registry, sources, scene hierarchy, typed relationships and scenario fixtures                     |
+| `src/core.ts`                                   | Deterministic traces/playhead state, toy encoding, seeded sampling, cancellation gate and bounded context |
+| `src/provider.ts`                               | Chat Completions JSON/SSE parsing, Unicode-safe stream assembly and selected-token identity               |
+| `src/scene.ts`                                  | Procedural geometry, labels, picking, camera controls, resource disposal and fixture image drawing        |
+| `src/main.ts`                                   | UI state, navigation, playback and request lifecycle                                                      |
+| `src/shell.ts`, `src/style.css`, `src/icons.ts` | Accessible HTML panels, responsive themes and interface icons                                             |
+
+The renderer is loaded separately from the HTML interface. Pixel ratio is capped at 1.6. Geometry and materials are reused; scene resources are disposed on replacement. Static scenes render on demand, and hidden pages suspend animation work. Hardware performance varies; the tests do not establish a universal frame rate.
+
+## Verification and remaining limits
+
+The test suite covers deterministic seeking, Unicode/whitespace, stable sampling, selected-token identity, cancellation/stale runs, bounded context, JSON/SSE parsing (including split multibyte input), unsupported capabilities, partial stream errors, all scenario stages, navigation, camera interaction, live error recovery with mocks, persistence, mobile sheets and renderer fallback.
+
+Visual checks include overview, model, block, all optional branches, cloud/local hardware, light/dark themes, desktop, 1280×720 laptop, tablet and mobile layouts down to 360×640. See [the verification guide](docs/verification.md) for the checked workflows and runtime limits.
+
+Live behaviour is verified with controlled mocks, not paid credentials or a compatibility claim for every provider. There is no real MCP connection, browser-hosted LLM, image inference endpoint or hardware telemetry. Training, distributed execution details, audio/video, expert routing and real tokenizer integration remain future extensions.
 
 ## Why I built this
 
-When I first started learning about LLMs, I found that many excellent
-resources focused on the internal architecture of
-transformers---attention heads, embeddings, residual connections, logits
-and many other concepts.
+This began as my first AI-assisted (“vibe coded”) project and the first software project I was proud to share publicly. I come from a cybersecurity and infrastructure background. While learning about transformers, I kept asking a simpler question: **what is the AI actually doing while generating my reply?**
 
-While these resources are incredibly valuable, I often found myself
-asking a much simpler question:
+This atlas continues that personal learning journey. It connects familiar systems to less familiar computation, with clarity and intellectual honesty as the priorities. It complements deeper tools such as [Transformer Explainer](https://github.com/poloclub/transformer-explainer) and [BertViz](https://github.com/jessevig/bertviz).
 
-> **\"What is the AI actually doing while it is generating my reply?\"**
+Sources are linked next to each concept, including [Hugging Face's cache explanation](https://huggingface.co/docs/transformers/cache_explanation), [the official MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture), [LLaMA](https://arxiv.org/abs/2302.13971), [LLaVA documentation](https://huggingface.co/docs/transformers/model_doc/llava), and [Diffusers text-to-image guidance](https://huggingface.co/docs/diffusers/using-diffusers/conditional_image_generation). The Human Atlas reference inspired the floating interface, not the subject matter or branding.
 
-This project was created to help answer that question.
+Feedback and corrections are welcome through [GitHub](https://github.com/jonathankek1016) or [LinkedIn](https://www.linkedin.com/in/jonathan-kek/).
 
-It combines real API outputs (where available) with clearly labelled
-educational abstractions to provide a high-level mental model of the
-inference process.
-
-## Project Philosophy
-
-This project values **clarity over complexity**.
-
-Instead of attempting to reproduce every internal tensor operation, it
-focuses on communicating the overall inference flow in a way that is
-approachable for beginners.
-
-If this visualization helps someone build an intuitive understanding
-before diving into more advanced topics such as attention mechanisms, KV
-cache, embeddings or interpretability research, then it has achieved its
-purpose.
-
-## Disclaimer
-
-This project is an educational visualization designed to build an intuitive understanding of the LLM inference process.
-
-It does **not** expose proprietary model internals, hidden states, weights, activations, or chain-of-thought. Sections labelled as **Educational** or **Illustrative** are conceptual abstractions intended for learning, not direct observations of how any specific model internally operates.
-
-## About this project
-
-This is my **first AI-assisted (\"vibe coded\") project** and also the
-first software project that I am genuinely proud to share publicly.
-
-It represents my personal learning journey into modern AI rather than an
-attempt to demonstrate advanced software engineering skills.
-
-I come from a cybersecurity and infrastructure background, and this
-project reflects my curiosity about understanding AI systems through
-visualization and interactive learning.
-
-## Requirements
-
-To use this application, simply provide your own OpenAI-compatible API key.
-
-Your API key is stored locally in your browser for convenience and is **never included** in this repository.
-
-## Features
-
-- Interactive visualization of the LLM inference pipeline
-- Step-by-step educational walkthrough of response generation
-- Distinguishes between real observable behaviour, educational abstractions and UI presentation
-- Browser-based application (no installation required)
-- OpenAI-compatible API support
-- Users provide their own API key (never included in this repository)
-
-## Tech Stack
-
-- HTML5
-- CSS3
-- Vanilla JavaScript
-- OpenAI-compatible Chat Completions API
-
-## Related Work
-
-Many excellent projects explore transformer internals and model
-interpretability in much greater depth.
-
-This project is **not intended to replace them**.
-
-Instead, it complements them by providing a higher-level educational
-perspective aimed at newcomers.
-
-I encourage anyone interested in learning more to also explore projects
-such as:
-
-- [Transformer Explainer](https://github.com/poloclub/transformer-explainer)
-- [BertViz](https://github.com/jessevig/bertviz)
-- [OpenAI Tokenizer](https://platform.openai.com/tokenizer)
-- Other transformer visualization and interpretability tools
-
-These projects provide significantly deeper insight into transformer
-architectures and inspired me to continue learning.
-
-## Known Issues
-
-The current prototype is functional, but a few UI and state-management issues are still being investigated:
-
-* **Interrupted generation state**
-
-  * If generation is interrupted midway, the UI may clear the previous output before continuing from the partially generated response, resulting in inconsistent display behaviour.
-
-* **Occasional placeholder response**
-
-  * Under certain conditions, the assistant may incorrectly display the placeholder response ("Sure! Here's .....") instead of the expected model output.
-
-* **Log probability viewport**
-
-  * The log probability visualization automatically scrolls during generation, but the current token is not always kept fully within the visible viewport. As a result, users may need to manually scroll to follow the active token.
-
-## Future Improvements
-
-Some ideas I hope to explore in future versions include:
-
-- Support for additional OpenAI-compatible providers (e.g. Anthropic, Google Gemini, OpenRouter and other compatible APIs)
-- Support for local LLMs through OpenAI-compatible endpoints (e.g. Ollama)
-- Image understanding / multimodal input support
-- Real tokenizer integration (e.g. tiktoken) instead of simplified token visualization
-- More accurate educational visualizations while maintaining a clear distinction between observable behaviour and conceptual abstractions
-- Additional explanations for concepts such as embeddings, attention, KV cache, temperature and sampling
-- Improved mobile responsiveness and tablet support
-- General UI/UX improvements based on community feedback
-
-As I continue learning about LLMs, I hope this project will continue improving alongside my understanding.
-
-## Connect & Feedback
-
-If this project helped you understand LLMs a little better, I\'d
-genuinely love to hear about it.
-
-Likewise, if you spot any inaccuracies, misleading explanations, or
-think a concept could be presented more clearly, please don\'t hesitate
-to let me know. I am still learning, and I welcome constructive feedback
-from anyone with experience in AI, machine learning, or software
-engineering. I would genuinely appreciate your feedback.
-
-You are welcome to:
-
--   Open a GitHub Issue
--   Start a GitHub Discussion (if enabled)
--   Connect with me on [LinkedIn](https://www.linkedin.com/in/jonathan-kek/)
-
-I enjoy meeting people who are curious about AI, cybersecurity,
-infrastructure, and technology in general.
-
-Every suggestion, correction, or discussion helps this project become a
-better educational resource for the next person who is learning.
-
-If this visualization helped you understand even one concept that
-previously felt confusing, then I would consider this project a success.
-
-Thank you for stopping by.
-
-### Find me online
-
-- GitHub: https://github.com/jonathankek1016
-- LinkedIn: https://www.linkedin.com/in/jonathan-kek/
+MIT licence · © 2026 **jonathankek1016**. See [LICENSE](LICENSE). Locally bundled fonts retain their own open-font licences.
