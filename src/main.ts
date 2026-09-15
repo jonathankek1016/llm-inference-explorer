@@ -8,8 +8,9 @@ import type { Message } from './core.ts';
 import { requestText, validateEndpoint } from './provider.ts';
 import type { ProviderConfig, ProviderResult } from './provider.ts';
 import type { AtlasScene } from './scene.ts';
-import { palettes, readAppearance, makeTheme } from './theme.ts';
+import { palettes, readAppearance, readDarkAppearance, makeTheme } from './theme.ts';
 import { ColourPicker } from './colour-picker.ts';
+import { defaultGridIntensity } from './grid.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -49,12 +50,13 @@ const state = {
 };
 const remoteOnly = new Set(['router', 'internet', 'datacenter', 'ingress', 'rack']);
 let appearance = readAppearance(read<unknown>('atlas-appearance', null));
+let darkAppearance = readDarkAppearance(read<unknown>('atlas-dark-appearance', 0));
 let groundGrid = read<unknown>('atlas-ground-grid', true) !== false;
-const storedGridIntensity = read<unknown>('atlas-grid-intensity', 50);
+const storedGridIntensity = read<unknown>('atlas-grid-intensity', defaultGridIntensity);
 let gridIntensity =
   typeof storedGridIntensity === 'number' && Number.isFinite(storedGridIntensity)
     ? Math.round(Math.max(0, Math.min(100, storedGridIntensity)))
-    : 50;
+    : defaultGridIntensity;
 const sceneName = (id: SceneId) => (id === 'compute' && state.local ? 'On-device compute' : sceneNames[id]);
 let trace = makeTrace('text'),
   atlas: AtlasScene | undefined,
@@ -111,10 +113,13 @@ let config: ProviderConfig = {
   key: '',
 };
 $('app').innerHTML = shell;
-function applyAppearance() {
-  const { tokens } = makeTheme(appearance, state.dark);
+function applyThemeTokens() {
+  const { tokens } = makeTheme(appearance, state.dark, darkAppearance);
   for (const [name, value] of Object.entries(tokens))
     document.documentElement.style.setProperty('--' + name, value);
+}
+function applyAppearance() {
+  applyThemeTokens();
   document.documentElement.dataset.palette = appearance.palette;
   atlas?.setPalette(appearance);
   save('atlas-appearance', appearance);
@@ -568,6 +573,7 @@ document.addEventListener('click', (e) => {
       save('atlas-theme', state.dark ? 'dark' : 'light');
       atlas?.setDark(state.dark);
       applyAppearance();
+      renderDarkPreference();
       b.setAttribute('aria-label', state.dark ? 'Toggle light theme' : 'Toggle dark theme');
       break;
     case 'appearance-open':
@@ -853,6 +859,25 @@ intensityControl.addEventListener('input', () => {
   save('atlas-grid-intensity', gridIntensity);
   atlas?.setGridIntensity(gridIntensity);
   renderGridPreference();
+});
+const darkControl = $<HTMLInputElement>('dark-appearance');
+function renderDarkPreference() {
+  darkControl.value = String(darkAppearance);
+  darkControl.disabled = !state.dark;
+  darkControl.setAttribute(
+    'aria-valuetext',
+    `${darkAppearance}% deeper${darkAppearance === 0 ? ' (default)' : ''}`,
+  );
+  $('dark-appearance-value').textContent = darkAppearance === 0 ? 'Default' : `${darkAppearance}%`;
+  $('dark-appearance-mode-note').hidden = state.dark;
+}
+renderDarkPreference();
+darkControl.addEventListener('input', () => {
+  if (!state.dark) return;
+  darkAppearance = readDarkAppearance(Number(darkControl.value));
+  save('atlas-dark-appearance', darkAppearance);
+  applyThemeTokens();
+  renderDarkPreference();
 });
 applyAppearance();
 chooseScenario('text');

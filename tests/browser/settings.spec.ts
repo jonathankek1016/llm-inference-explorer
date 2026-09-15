@@ -1,5 +1,20 @@
 import { test, expect } from '@playwright/test';
 
+test('existing saved grid intensities are respected without a default migration', async ({ page }) => {
+  await page.goto('/');
+  for (const saved of [0, 50, 100]) {
+    await page.evaluate((value) => localStorage.setItem('atlas-grid-intensity', String(value)), saved);
+    await page.reload();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('slider', { name: 'Grid intensity', exact: true })).toHaveValue(
+      String(saved),
+    );
+    await expect(page.locator('#grid-intensity-value')).toHaveText(`${saved}%`);
+    expect(await page.evaluate(() => localStorage.getItem('atlas-grid-intensity'))).toBe(String(saved));
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  }
+});
+
 test('display intensity autosaves independently and outside dismissal discards connection drafts', async ({
   page,
 }) => {
@@ -9,7 +24,7 @@ test('display intensity autosaves independently and outside dismissal discards c
   const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.locator('.object-label').first().waitFor();
   await open();
-  await expect(intensity).toHaveValue('50');
+  await expect(intensity).toHaveValue('25');
   await page.locator('#provider-url').fill('https://example.com/v1');
   await page.locator('#provider-model').fill('saved-model');
   await page.locator('#provider-key').fill('fixture-memory-key');

@@ -449,6 +449,7 @@ svg {
 .panel-heading .tabs {
   background: var(--soft);
   padding: 0.1875rem;
+  border-radius: 0.5625rem;
   flex: 1;
 }
 .panel-heading .tabs button {
@@ -807,6 +808,11 @@ svg {
 .viewport-toolbar [aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent);
+}
+@media (min-width: 981px) {
+  #inspector-panel.collapsed ~ .viewport-toolbar {
+    right: var(--margin);
+  }
 }
 .scene-tools {
   position: absolute;
@@ -1555,7 +1561,7 @@ dialog form > input:not([type='checkbox']) {
   max-width: 37.5rem;
   width: max-content;
   background: var(--text);
-  color: var(--canvas);
+  color: var(--inverse-ink, var(--canvas));
   border-radius: 0.5625rem;
   padding: 0.8125rem 1.25rem;
   font-size: 0.75rem;
@@ -2186,6 +2192,8 @@ html {
 /* Shared theme tokens keep surfaces, data accents and controls coherent. */
 [data-theme='dark'] {
   color-scheme: dark;
+  /* Preserve inverse ink when the environment background deepens. */
+  --inverse-ink: #202228;
   --canvas: #202027;
   --chrome: #25252e;
   --panel: rgba(44, 43, 54, 0.98);
@@ -2561,6 +2569,13 @@ select option {
 }
 .grid-intensity-control input:disabled {
   cursor: not-allowed;
+}
+.dark-appearance-control .small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.dark-appearance-control .range-end {
+  text-align: right;
 }
 @supports not (backdrop-filter: blur(14px)) {
   :root,

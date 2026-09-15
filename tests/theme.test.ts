@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { palettes, makeTheme, readAppearance, contrast, sceneColours, mix } from '../src/theme.ts';
+import {
+  palettes,
+  makeTheme,
+  readAppearance,
+  readDarkAppearance,
+  contrast,
+  sceneColours,
+  mix,
+} from '../src/theme.ts';
 
 test('preset and extreme custom colours retain readable semantic text in both modes', () => {
   const choices = [
@@ -60,4 +68,47 @@ test('appearance preferences validate untrusted stored values and keep original 
   assert.deepEqual(readAppearance(null), { palette: 'sage', custom: '#397e68' });
   assert.deepEqual(sceneColours(readAppearance(null)), {});
   assert.notEqual(sceneColours({ palette: 'rose', custom: '#397e68' })['#43a58f'], '#43a58f');
+});
+
+test('dark depth only changes environment tokens and preserves contrast throughout its range', () => {
+  const choices = [
+    ...palettes.map((p) => ({ palette: p.id, custom: '#397e68' })),
+    ...['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#888888'].map((custom) => ({
+      palette: 'custom',
+      custom,
+    })),
+  ];
+  for (const appearance of choices) {
+    const light = makeTheme(appearance, false);
+    const baseline = makeTheme(appearance, true);
+    assert.deepEqual(makeTheme(appearance, true, 0), baseline);
+    assert.equal(baseline.tokens.canvas, '#202228');
+    let previousContrast = 0;
+    for (let depth = 0; depth <= 100; depth++) {
+      assert.deepEqual(makeTheme(appearance, false, depth), light);
+      const { tokens } = makeTheme(appearance, true, depth);
+      for (const key of Object.keys(tokens))
+        if (key !== 'canvas' && key !== 'chrome') assert.equal(tokens[key], baseline.tokens[key]);
+      assert.equal(tokens.chrome, tokens.canvas);
+      const currentContrast = contrast(tokens.text, tokens.canvas);
+      assert(currentContrast >= previousContrast);
+      previousContrast = currentContrast;
+      for (const ink of ['text', 'muted', 'accent']) assert(contrast(tokens[ink], tokens.canvas) >= 4.5);
+      // Smoked mica over the deeper canvas stays readable, even over white models.
+      for (const backing of [tokens.canvas, '#ffffff']) {
+        const mica = mix(tokens.panel, backing, 0.07);
+        for (const ink of ['text', 'muted', 'accent', 'blue', 'rose', 'error'])
+          assert(contrast(tokens[ink], mica) >= 4.5);
+      }
+    }
+    assert.equal(makeTheme(appearance, true, 100).tokens.canvas, '#101217');
+  }
+});
+
+test('dark depth validates stored preferences and defaults safely', () => {
+  for (const invalid of [undefined, null, {}, [], '50', NaN, Infinity, -Infinity])
+    assert.equal(readDarkAppearance(invalid), 0);
+  assert.equal(readDarkAppearance(-1), 0);
+  assert.equal(readDarkAppearance(101), 100);
+  assert.equal(readDarkAppearance(49.7), 50);
 });

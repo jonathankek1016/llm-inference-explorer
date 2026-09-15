@@ -6,6 +6,7 @@ import type { SceneId } from './content.ts';
 import { randomSeed } from './core.ts';
 import { sceneColours } from './theme.ts';
 import type { Appearance } from './theme.ts';
+import { defaultGridIntensity, gridOpacity } from './grid.ts';
 
 const palette = {
   white: '#edf2f0',
@@ -114,7 +115,7 @@ export class AtlasScene {
   private colourMap: Record<string, string> = {};
   private framing: HTMLElement;
   private groundGrid: T.LineSegments;
-  private gridIntensity = 50;
+  private gridIntensity = defaultGridIntensity;
   private gridBaseOpacity = 0.045;
   private boxGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.08);
   private sphereGeometry = new T.SphereGeometry(1, 20, 14);
@@ -772,7 +773,7 @@ export class AtlasScene {
     const material = this.groundGrid.material as T.ShaderMaterial;
     material.uniforms.colour.value.set(value ? '#c0c7d2' : '#69747c');
     this.gridBaseOpacity = value ? 0.028 : 0.045;
-    material.uniforms.opacity.value = (this.gridBaseOpacity * this.gridIntensity) / 50;
+    material.uniforms.opacity.value = gridOpacity(this.gridIntensity, this.gridBaseOpacity);
     this.dirty = true;
   }
   setGrid(value: boolean) {
@@ -780,10 +781,12 @@ export class AtlasScene {
     this.dirty = true;
   }
   setGridIntensity(value: number) {
-    // 50% retains the original appearance in each theme. Only alpha changes.
+    // Only alpha changes; retain the existing geometry, colour and distance fade.
     this.gridIntensity = value;
-    (this.groundGrid.material as T.ShaderMaterial).uniforms.opacity.value =
-      (this.gridBaseOpacity * value) / 50;
+    (this.groundGrid.material as T.ShaderMaterial).uniforms.opacity.value = gridOpacity(
+      value,
+      this.gridBaseOpacity,
+    );
     this.dirty = true;
   }
   focus() {

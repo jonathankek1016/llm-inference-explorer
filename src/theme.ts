@@ -54,7 +54,12 @@ export function readable(colour: string, backgrounds: string[], minimum = 4.6) {
   }
   return target;
 }
-export function makeTheme(appearance: Appearance, dark: boolean) {
+export function readDarkAppearance(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.round(Math.max(0, Math.min(100, value)))
+    : 0;
+}
+export function makeTheme(appearance: Appearance, dark: boolean, darkAppearance = 0) {
   const preset = palettes.find((p) => p.id === appearance.palette) || palettes[0];
   const primary = appearance.palette === 'custom' ? appearance.custom : preset.accent;
   const monochrome = appearance.palette === 'neutral';
@@ -115,6 +120,12 @@ export function makeTheme(appearance: Appearance, dark: boolean) {
     roseSoft,
     micaBacking,
   ]);
+  // Only deepen the environment. Keep the original contrast backing, surfaces
+  // and palette generation unchanged, including every token in light mode.
+  if (dark) {
+    tokens.canvas = mix(canvas, '#101217', readDarkAppearance(darkAppearance) / 100);
+    tokens.chrome = tokens.canvas;
+  }
   return { tokens, primary };
 }
 
