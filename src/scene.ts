@@ -120,11 +120,14 @@ export class AtlasScene {
   private boxGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.08);
   private sphereGeometry = new T.SphereGeometry(1, 20, 14);
   private selectedCallback: (id: string) => void;
-  private manualCallback: () => void;
+  private manualCallback: (kind: 'pan' | 'zoom') => void;
+  private userControlling = false;
+  private controlsTarget = new T.Vector3();
+  private controlsZoom = 1;
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
-    onManual: () => void,
+    onManual: (kind: 'pan' | 'zoom') => void,
     onFailure: () => void,
   ) {
     this.selectedCallback = onSelect;
@@ -160,9 +163,24 @@ export class AtlasScene {
     this.controls.addEventListener('start', () => {
       this.panTarget = undefined;
       this.targetZoom = this.camera.zoom;
-      this.manualCallback();
+      this.userControlling = true;
+      this.controlsTarget.copy(this.controls.target);
+      this.controlsZoom = this.camera.zoom;
+    });
+    this.controls.addEventListener('end', () => {
+      this.userControlling = false;
     });
     this.controls.addEventListener('change', () => {
+      // Orbit changes orientation, but not the target or orthographic zoom.
+      // Observe actual control changes so clicks and programmatic focus/reset
+      // do not masquerade as manual detachment (including touch gestures).
+      if (this.userControlling) {
+        if (Math.abs(this.camera.zoom - this.controlsZoom) > 1e-6) this.manualCallback('zoom');
+        else if (this.controls.target.distanceToSquared(this.controlsTarget) > 1e-10)
+          this.manualCallback('pan');
+        this.controlsZoom = this.camera.zoom;
+        this.controlsTarget.copy(this.controls.target);
+      }
       this.dirty = true;
     });
     const ambient = new T.HemisphereLight(0xffffff, 0x9caeaa, 2.5);

@@ -869,9 +869,25 @@ svg {
 }
 .playback-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   padding-bottom: 0.875rem;
+}
+.journey-mode {
+  font-size: 0.5625rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+.journey-mode select {
+  font: inherit;
+  color: var(--text);
+  border: 0;
+  background: transparent;
+  padding: 0.125rem;
+  width: auto;
 }
 .playback-top .evidence {
   font-size: 0.5rem;

@@ -3,8 +3,19 @@ import { shell } from './shell.ts';
 import { icon } from './icons.ts';
 import { concepts, scenarios, sceneNames, sceneParents, sceneEntries, sources } from './content.ts';
 import type { SceneId } from './content.ts';
-import { makeTrace, frameAt, toyEncode, distribution, sample, boundedContext, RunGate } from './core.ts';
-import type { Message } from './core.ts';
+import {
+  makeTrace,
+  frameAt,
+  toyEncode,
+  distribution,
+  sample,
+  boundedContext,
+  RunGate,
+  createJourneyControl,
+  transitionJourney,
+  journeyAdvancing,
+} from './core.ts';
+import type { Message, JourneyAction, JourneyMode } from './core.ts';
 import { requestText, validateEndpoint } from './provider.ts';
 import type { ProviderConfig, ProviderResult } from './provider.ts';
 import type { AtlasScene } from './scene.ts';
@@ -37,9 +48,7 @@ const state = {
   scene: 'world' as SceneId,
   selected: 'device',
   position: 0,
-  playing: false,
   speed: 1,
-  follow: true,
   local: false,
   labels: true,
   tab: 'journey',
@@ -48,6 +57,7 @@ const state = {
   seed: 42,
   dark: read<string>('atlas-theme', 'light') === 'dark',
 };
+let journey = createJourneyControl();
 const remoteOnly = new Set(['router', 'internet', 'datacenter', 'ingress', 'rack']);
 let appearance = readAppearance(read<unknown>('atlas-appearance', null));
 let darkAppearance = readDarkAppearance(read<unknown>('atlas-dark-appearance', 0));
@@ -144,13 +154,44 @@ function toast(text: string) {
   }, 5000);
 }
 function setPlaying(value: boolean) {
-  state.playing = value;
+  updateJourney({ type: value ? 'PLAY' : 'PAUSE' });
+}
+function updateJourney(action: JourneyAction) {
+  journey = transitionJourney(journey, action);
+  renderJourneyControl();
+}
+function renderJourneyControl() {
+  const advancing = journeyAdvancing(journey);
   if (atlas) {
-    atlas.playing = value;
+    atlas.playing = advancing;
     atlas.dirty = true;
   }
-  $('play').innerHTML = icon(value ? 'pause' : 'play');
-  $('play').setAttribute('aria-label', value ? 'Pause journey' : 'Play journey');
+  $('play').innerHTML = icon(advancing ? 'pause' : 'play');
+  $('play').setAttribute('aria-label', advancing ? 'Pause journey' : 'Play journey');
+  $('play').toggleAttribute('disabled', journey.journeyMode === 'MANUAL');
+  $<HTMLSelectElement>('journey-mode').value = journey.journeyMode;
+  $<HTMLInputElement>('follow').checked = journey.guidedFocus === 'TRACKING';
+  $('follow').title =
+    journey.guidedFocus === 'DETACHED' ? 'Resume focus on the current journey stage' : 'Tracking the journey';
+  const playback = document.querySelector<HTMLElement>('.playback')!;
+  playback.dataset.journeyMode = journey.journeyMode;
+  playback.dataset.guidedFocus = journey.guidedFocus;
+  playback.dataset.advancing = String(advancing);
+}
+function detachGuidedFocus() {
+  updateJourney({ type: 'DETACH' });
+}
+function resumeGuidedFocus() {
+  // Resolve from the current frame, never from the selection at detachment time.
+  updateJourney({ type: 'RESUME' });
+  selectConcept(frame.event.conceptId, { pause: false });
+  atlas?.focus();
+}
+function navigateStage(position: number) {
+  // An explicit step retains V2's pause while attached. Detached stepping must
+  // not discard Auto intent: Resume still returns to the newly chosen stage.
+  if (journey.guidedFocus === 'TRACKING') setPlaying(false);
+  seek(position);
 }
 function showPanel(which: 'journey' | 'inspector', show = true) {
   $(`${which}-panel`).classList.toggle('collapsed', !show);
@@ -172,7 +213,7 @@ function setTab(tab: string) {
 }
 function changeScene(scene: SceneId) {
   state.scene = scene;
-  atlas?.setScene(scene, state.follow);
+  atlas?.setScene(scene, journey.guidedFocus === 'TRACKING');
   atlas?.resize();
   const lineage: SceneId[] = [scene];
   let parent = sceneParents[scene];
@@ -554,8 +595,7 @@ document.addEventListener('click', (e) => {
   if (b.dataset.scene) goScene(b.dataset.scene as SceneId);
   if (b.dataset.concept) selectConcept(b.dataset.concept);
   if (b.dataset.stage) {
-    setPlaying(false);
-    seek(Number(b.dataset.stage));
+    navigateStage(Number(b.dataset.stage));
   }
   if (b.dataset.searchConcept) {
     $<HTMLDialogElement>('search-dialog').close();
@@ -617,24 +657,27 @@ document.addEventListener('click', (e) => {
       $<HTMLDialogElement>('about-dialog').showModal();
       break;
     case 'play':
+      if (journey.journeyMode === 'MANUAL') break;
+      if (journey.guidedFocus === 'DETACHED') {
+        resumeGuidedFocus();
+        break;
+      }
       if (state.position === trace.length - 1) seek(0);
-      setPlaying(!state.playing);
+      setPlaying(!journeyAdvancing(journey));
       break;
     case 'start-tour':
       seek(0);
-      setPlaying(true);
+      resumeGuidedFocus();
       break;
     case 'previous':
-      setPlaying(false);
-      seek(state.position - 1);
+      navigateStage(state.position - 1);
       break;
     case 'next':
-      setPlaying(false);
-      seek(state.position + 1);
+      navigateStage(state.position + 1);
       break;
     case 'replay':
       seek(0);
-      setPlaying(true);
+      resumeGuidedFocus();
       break;
     case 'reset-camera':
     case 'fit-scene':
@@ -686,8 +729,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id === 'timeline') {
-    setPlaying(false);
-    seek(Number(el.value));
+    navigateStage(Number(el.value));
   }
   if (el.id === 'search-input') search();
   if (el.id === 'temperature') {
@@ -720,14 +762,15 @@ document.addEventListener('change', (e) => {
     seek(0);
   }
   if (el.id === 'speed') state.speed = Number(el.value);
+  if (el.id === 'journey-mode') updateJourney({ type: 'SET_MODE', mode: el.value as JourneyMode });
   if (el.id === 'mode') {
     cancelRequest();
     mode = el.value as 'demo' | 'live';
     updateMode();
   }
   if (el.id === 'follow') {
-    state.follow = el.checked;
-    if (el.checked) atlas?.reset();
+    if (el.checked) resumeGuidedFocus();
+    else detachGuidedFocus();
   }
 });
 $('chat-form').addEventListener('submit', (e) => {
@@ -818,18 +861,16 @@ document.addEventListener('keydown', (e) => {
     $('play').click();
   }
   if (e.key === 'ArrowRight') {
-    setPlaying(false);
-    seek(state.position + 1);
+    navigateStage(state.position + 1);
   }
   if (e.key === 'ArrowLeft') {
-    setPlaying(false);
-    seek(state.position - 1);
+    navigateStage(state.position - 1);
   }
 });
 function tick(time: number) {
   const dt = Math.min(time - animationLast, 100);
   animationLast = time;
-  if (state.playing && !document.hidden) {
+  if (journeyAdvancing(journey) && !document.hidden) {
     stageElapsed += dt * state.speed;
     if (stageElapsed >= trace[state.position].duration) {
       if (state.position < trace.length - 1) seek(state.position + 1);
@@ -919,13 +960,13 @@ import('./scene.ts')
       atlas = new Scene(
         $('viewport'),
         (id) => {
-          selectConcept(id, { keepScene: id === 'cache' && state.scene === 'block' });
+          if (id !== frame.event.conceptId) detachGuidedFocus();
+          // A scene-object inspection changes exploration selection, not the
+          // official trace position, scenario, or accumulated teaching time.
+          selectConcept(id, { pause: false, keepScene: id === 'cache' && state.scene === 'block' });
           showPanel('inspector');
         },
-        () => {
-          state.follow = false;
-          $<HTMLInputElement>('follow').checked = false;
-        },
+        detachGuidedFocus,
         fallback,
       );
       atlas.setDark(state.dark);
@@ -934,9 +975,9 @@ import('./scene.ts')
       atlas.setPalette(appearance);
       atlas.setLocal(state.local);
       atlas.setProgress(frame.decode, frame.refinement);
-      atlas.setScene(state.scene);
+      atlas.setScene(state.scene, journey.guidedFocus === 'TRACKING');
       atlas.setSelected(state.selected);
-      atlas.playing = state.playing;
+      renderJourneyControl();
     } catch {
       fallback();
     }

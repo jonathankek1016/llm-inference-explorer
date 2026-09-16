@@ -182,10 +182,11 @@ test('camera orbit, zoom, focus, labels, local route and playback controls', asy
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width * 0.65, rect.y + rect.height * 0.65, { steps: 10 });
   await page.mouse.up();
-  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel('Follow journey', { exact: true })).toBeChecked();
   expect(Buffer.compare(before, await canvas.screenshot())).not.toBe(0);
   const orbited = await canvas.screenshot();
   await page.mouse.wheel(0, -180);
+  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
   expect(Buffer.compare(orbited, await canvas.screenshot())).not.toBe(0);
   await page.getByRole('button', { name: 'Reset camera', exact: true }).click();
   const reset = await canvas.screenshot();

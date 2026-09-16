@@ -49,12 +49,14 @@ test('full-window world retains framing and grid preference without changing the
   await page.mouse.down();
   await page.mouse.move(24, 460, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel('Follow journey', { exact: true })).toBeChecked();
   const orbited = await canvas.screenshot();
-  await page.mouse.move(650, 580);
+  // Stay on exposed canvas: projected labels can cover the old centre point.
+  await page.mouse.move(12, 500);
   await page.mouse.down({ button: 'right' });
-  await page.mouse.move(740, 620, { steps: 8 });
+  await page.mouse.move(24, 560, { steps: 8 });
   await page.mouse.up({ button: 'right' });
+  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
   expect(Buffer.compare(orbited, await canvas.screenshot())).not.toBe(0);
   await page.getByRole('button', { name: 'Fit scene', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
