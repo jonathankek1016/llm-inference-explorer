@@ -44,7 +44,7 @@ test('full-window world retains framing and grid preference without changing the
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.getByRole('button', { name: 'Toggle dark theme', exact: true }).click();
   // Orbit from outside the former central viewport: the background itself is interactive.
-  await page.getByLabel('Follow journey', { exact: true }).check();
+  await page.locator('#timeline').fill('0');
   await page.mouse.move(12, 400);
   await page.mouse.down();
   await page.mouse.move(24, 460, { steps: 8 });

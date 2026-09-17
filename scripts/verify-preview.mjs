@@ -111,6 +111,10 @@ await page.keyboard.press('Escape');
 await page.getByRole('tab', { name: 'Chat', exact: true }).click();
 await page.getByRole('textbox', { name: 'Your message' }).fill('Why is the sky blue?');
 await page.getByRole('button', { name: 'Run demo', exact: true }).click();
+// Earlier manual scene exploration detached guidance. Running a request must
+// not silently reclaim that camera; use the canonical recovery action.
+assert.equal(await page.locator('.playback').getAttribute('data-advancing'), 'false');
+await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
 await page.getByRole('button', { name: 'Pause journey', exact: true }).click();
 await page.screenshot({ path: 'artifacts/final-chat.png' });
 assert.equal(idleDrawCalls, 0, 'A static, settled atlas should not redraw');

@@ -175,6 +175,7 @@ test('tablet sheets leave the scene clear and remain usable across resizing', as
 test('camera orbit, zoom, focus, labels, local route and playback controls', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#viewport canvas')).toBeVisible();
+  await page.locator('#timeline').fill('1');
   const canvas = page.locator('#viewport canvas'),
     rect = (await canvas.boundingBox())!;
   const before = await canvas.screenshot();
@@ -209,7 +210,7 @@ test('camera orbit, zoom, focus, labels, local route and playback controls', asy
   await expect(page.locator('.object-label[data-concept="rack"]')).toHaveCount(0);
   await page.screenshot({ path: 'artifacts/local-hardware.png' });
   await page.getByLabel('Illustrative compute route', { exact: true }).selectOption('remote');
-  await page.getByLabel('Follow journey', { exact: true }).check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await page.getByLabel('Playback speed', { exact: true }).selectOption('2');
   await page.locator('#timeline').fill('15');
   await page.getByRole('button', { name: 'Play journey', exact: true }).click();

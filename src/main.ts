@@ -157,8 +157,18 @@ function setPlaying(value: boolean) {
   updateJourney({ type: value ? 'PLAY' : 'PAUSE' });
 }
 function updateJourney(action: JourneyAction) {
+  const starting = !journey.active;
   journey = transitionJourney(journey, action);
   renderJourneyControl();
+  if (action.type === 'PLAY' || (action.type === 'SET_MODE' && action.mode === 'AUTO')) {
+    const previousScene = state.scene;
+    if (starting) selectConcept(frame.event.conceptId, { pause: false });
+    focusJourneySubject(previousScene !== state.scene);
+  }
+}
+function focusJourneySubject(canonical = false) {
+  if (journey.active && journey.guidedFocus === 'TRACKING')
+    atlas?.focusJourneySubject(frame.event.conceptId, canonical);
 }
 function renderJourneyControl() {
   const advancing = journeyAdvancing(journey);
@@ -168,29 +178,38 @@ function renderJourneyControl() {
   }
   $('play').innerHTML = icon(advancing ? 'pause' : 'play');
   $('play').setAttribute('aria-label', advancing ? 'Pause journey' : 'Play journey');
-  $('play').toggleAttribute('disabled', journey.journeyMode === 'MANUAL');
+  $('play').toggleAttribute(
+    'disabled',
+    journey.journeyMode === 'MANUAL' || journey.guidedFocus === 'DETACHED',
+  );
   $<HTMLSelectElement>('journey-mode').value = journey.journeyMode;
   $<HTMLInputElement>('follow').checked = journey.guidedFocus === 'TRACKING';
-  $('follow').title =
-    journey.guidedFocus === 'DETACHED' ? 'Resume focus on the current journey stage' : 'Tracking the journey';
+  $('follow').closest<HTMLElement>('label')!.hidden = !journey.active || journey.guidedFocus === 'DETACHED';
+  $('resume-focus').hidden = !journey.active || journey.guidedFocus !== 'DETACHED';
+  $('guidance-status').hidden = journey.active;
   const playback = document.querySelector<HTMLElement>('.playback')!;
   playback.dataset.journeyMode = journey.journeyMode;
   playback.dataset.guidedFocus = journey.guidedFocus;
   playback.dataset.advancing = String(advancing);
+  playback.dataset.journeyActive = String(journey.active);
 }
 function detachGuidedFocus() {
+  atlas?.cancelFocus();
   updateJourney({ type: 'DETACH' });
 }
 function resumeGuidedFocus() {
+  if (!journey.active) return;
   // Resolve from the current frame, never from the selection at detachment time.
-  updateJourney({ type: 'RESUME' });
+  const previousScene = state.scene;
   selectConcept(frame.event.conceptId, { pause: false });
-  atlas?.focus();
+  updateJourney({ type: 'RESUME' });
+  focusJourneySubject(previousScene !== state.scene);
 }
 function navigateStage(position: number) {
   // An explicit step retains V2's pause while attached. Detached stepping must
   // not discard Auto intent: Resume still returns to the newly chosen stage.
   if (journey.guidedFocus === 'TRACKING') setPlaying(false);
+  updateJourney({ type: 'NAVIGATE' });
   seek(position);
 }
 function showPanel(which: 'journey' | 'inspector', show = true) {
@@ -213,7 +232,7 @@ function setTab(tab: string) {
 }
 function changeScene(scene: SceneId) {
   state.scene = scene;
-  atlas?.setScene(scene, journey.guidedFocus === 'TRACKING');
+  atlas?.setScene(scene, !journey.active);
   atlas?.resize();
   const lineage: SceneId[] = [scene];
   let parent = sceneParents[scene];
@@ -252,6 +271,13 @@ function changeScene(scene: SceneId) {
 }
 function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; keepScene?: boolean } = {}) {
   if (!concepts[id]) return;
+  // Exploration during a started journey cannot replace its official frame.
+  // Direction-dependent row policies and other navigation settings are later work.
+  if (journey.active && options.pause !== false) {
+    detachGuidedFocus();
+    selectConcept(id, { ...options, pause: false });
+    return;
+  }
   if (options.pause !== false) {
     setPlaying(false);
     if (state.local && remoteOnly.has(id)) {
@@ -286,9 +312,13 @@ function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; 
   renderStages();
 }
 function goScene(id: SceneId) {
-  setPlaying(false);
+  if (journey.active) detachGuidedFocus();
+  else setPlaying(false);
   changeScene(id);
-  selectConcept(id === 'compute' && state.local ? 'gpu' : sceneEntries[id], { keepScene: true });
+  selectConcept(id === 'compute' && state.local ? 'gpu' : sceneEntries[id], {
+    keepScene: true,
+    pause: !journey.active,
+  });
   atlas?.reset();
 }
 function renderStages() {
@@ -325,11 +355,13 @@ function renderStages() {
   }
 }
 function seek(position: number) {
+  const previousScene = state.scene;
   frame = frameAt(trace, position);
   state.position = frame.index;
   stageElapsed = 0;
   atlas?.setProgress(frame.decode, frame.refinement);
   selectConcept(frame.event.conceptId, { pause: false });
+  focusJourneySubject(previousScene !== state.scene);
   renderPlayback();
 }
 function renderPlayback() {
@@ -657,17 +689,13 @@ document.addEventListener('click', (e) => {
       $<HTMLDialogElement>('about-dialog').showModal();
       break;
     case 'play':
-      if (journey.journeyMode === 'MANUAL') break;
-      if (journey.guidedFocus === 'DETACHED') {
-        resumeGuidedFocus();
-        break;
-      }
+      if (journey.journeyMode === 'MANUAL' || journey.guidedFocus === 'DETACHED') break;
       if (state.position === trace.length - 1) seek(0);
       setPlaying(!journeyAdvancing(journey));
       break;
     case 'start-tour':
+      updateJourney({ type: 'START' });
       seek(0);
-      resumeGuidedFocus();
       break;
     case 'previous':
       navigateStage(state.position - 1);
@@ -676,14 +704,19 @@ document.addEventListener('click', (e) => {
       navigateStage(state.position + 1);
       break;
     case 'replay':
+      updateJourney({ type: 'START' });
       seek(0);
+      break;
+    case 'resume-focus':
       resumeGuidedFocus();
       break;
     case 'reset-camera':
     case 'fit-scene':
+      detachGuidedFocus();
       atlas?.reset();
       break;
     case 'focus-selection':
+      detachGuidedFocus();
       atlas?.focus();
       break;
     case 'toggle-labels':
@@ -769,8 +802,7 @@ document.addEventListener('change', (e) => {
     updateMode();
   }
   if (el.id === 'follow') {
-    if (el.checked) resumeGuidedFocus();
-    else detachGuidedFocus();
+    if (!el.checked) detachGuidedFocus();
   }
 });
 $('chat-form').addEventListener('submit', (e) => {
@@ -960,10 +992,10 @@ import('./scene.ts')
       atlas = new Scene(
         $('viewport'),
         (id) => {
-          if (id !== frame.event.conceptId) detachGuidedFocus();
+          if (journey.active && id !== frame.event.conceptId) detachGuidedFocus();
           // A scene-object inspection changes exploration selection, not the
           // official trace position, scenario, or accumulated teaching time.
-          selectConcept(id, { pause: false, keepScene: id === 'cache' && state.scene === 'block' });
+          selectConcept(id, { pause: !journey.active, keepScene: id === 'cache' && state.scene === 'block' });
           showPanel('inspector');
         },
         detachGuidedFocus,
@@ -975,9 +1007,10 @@ import('./scene.ts')
       atlas.setPalette(appearance);
       atlas.setLocal(state.local);
       atlas.setProgress(frame.decode, frame.refinement);
-      atlas.setScene(state.scene, journey.guidedFocus === 'TRACKING');
+      atlas.setScene(state.scene, !journey.active);
       atlas.setSelected(state.selected);
       renderJourneyControl();
+      focusJourneySubject();
     } catch {
       fallback();
     }

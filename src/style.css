@@ -912,6 +912,15 @@ svg {
   accent-color: var(--accent);
   margin: 0;
 }
+.resume-focus {
+  margin-left: auto;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 0.3125rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.625rem;
+  white-space: nowrap;
+}
 .playback-controls {
   display: flex;
   gap: 0.5625rem;

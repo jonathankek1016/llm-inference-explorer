@@ -7,6 +7,8 @@ import { randomSeed } from './core.ts';
 import { sceneColours } from './theme.ts';
 import type { Appearance } from './theme.ts';
 import { defaultGridIntensity, gridOpacity } from './grid.ts';
+import { focusEase, resolveGuidedFraming } from './camera.ts';
+import type { FocusFraming } from './camera.ts';
 
 const palette = {
   white: '#edf2f0',
@@ -104,6 +106,8 @@ export class AtlasScene {
   private raf = 0;
   private targetZoom = 1;
   private panTarget?: T.Vector3;
+  private directionTarget?: T.Vector3;
+  private focusKind?: 'guided' | 'selection';
   private packetStart = 0;
   private ray = new T.Raycaster();
   private pointer = new T.Vector2();
@@ -161,8 +165,9 @@ export class AtlasScene {
     this.controls.maxZoom = 3.6;
     this.controls.maxPolarAngle = Math.PI / 2.1;
     this.controls.addEventListener('start', () => {
-      this.panTarget = undefined;
-      this.targetZoom = this.camera.zoom;
+      // Keep a guided destination pending while the user orbits. Suspend its
+      // interpolation during the gesture so programmatic motion is never pan.
+      if (this.focusKind !== 'guided') this.cancelFocus();
       this.userControlling = true;
       this.controlsTarget.copy(this.controls.target);
       this.controlsZoom = this.camera.zoom;
@@ -175,9 +180,19 @@ export class AtlasScene {
       // Observe actual control changes so clicks and programmatic focus/reset
       // do not masquerade as manual detachment (including touch gestures).
       if (this.userControlling) {
-        if (Math.abs(this.camera.zoom - this.controlsZoom) > 1e-6) this.manualCallback('zoom');
-        else if (this.controls.target.distanceToSquared(this.controlsTarget) > 1e-10)
-          this.manualCallback('pan');
+        const kind =
+          Math.abs(this.camera.zoom - this.controlsZoom) > 1e-6
+            ? 'zoom'
+            : this.controls.target.distanceToSquared(this.controlsTarget) > 1e-10
+              ? 'pan'
+              : undefined;
+        if (kind) {
+          this.cancelFocus();
+          this.manualCallback(kind);
+        } else {
+          // An orbit is a new user-chosen angle, even during scene acquisition.
+          this.directionTarget = undefined;
+        }
         this.controlsZoom = this.camera.zoom;
         this.controlsTarget.copy(this.controls.target);
       }
@@ -763,6 +778,7 @@ export class AtlasScene {
   }
   setScene(id: SceneId, follow = true) {
     if (id !== this.sceneId) {
+      this.cancelFocus();
       this.build(id);
       if (follow) this.reset();
     }
@@ -810,13 +826,42 @@ export class AtlasScene {
   focus() {
     const node = this.nodes.find((n) => n.id === this.selected);
     if (node) {
-      this.panTarget = node.group.position.clone().add(new T.Vector3(0, 0.8, 0));
-      this.targetZoom = 1.65;
-      this.dirty = true;
+      this.beginFocus(
+        { target: [node.group.position.x, node.group.position.y + 0.8, node.group.position.z], zoom: 1.65 },
+        'selection',
+      );
     }
   }
-  reset() {
+  focusJourneySubject(subject: string, canonical = false) {
+    const node = this.nodes.find((n) => n.id === subject);
+    const framing = resolveGuidedFraming(
+      this.sceneId,
+      subject,
+      node?.group.position.toArray() as [number, number, number] | undefined,
+    );
+    if (!framing) {
+      this.cancelFocus();
+      return false;
+    }
+    this.beginFocus(framing, 'guided', canonical);
+    return true;
+  }
+  private beginFocus(framing: FocusFraming, kind: 'guided' | 'selection', canonical = false) {
+    this.panTarget = new T.Vector3(...framing.target);
+    this.targetZoom = framing.zoom;
+    this.focusKind = kind;
+    // Canonical scene viewing direction, eased by the same focus animation.
+    this.directionTarget = canonical ? new T.Vector3(11, 9.7, 14.7) : undefined;
+    this.dirty = true;
+  }
+  cancelFocus() {
     this.panTarget = undefined;
+    this.directionTarget = undefined;
+    this.focusKind = undefined;
+    this.targetZoom = this.camera.zoom;
+  }
+  reset() {
+    this.cancelFocus();
     this.camera.position.set(11, 10.5, 15);
     this.controls.target.set(0, 0.8, 0.3);
     this.camera.zoom = 1;
@@ -874,19 +919,22 @@ export class AtlasScene {
     if (document.hidden) return;
     const dt = Math.min((time - this.lastTime) / 1000, 0.1);
     this.lastTime = time;
-    if (this.panTarget) {
-      const fraction = this.reduced ? 1 : 1 - Math.exp(-dt * 7),
+    if (this.panTarget && !this.userControlling) {
+      const fraction = focusEase(dt, this.reduced),
+        offset = this.camera.position.clone().sub(this.controls.target),
         delta = this.panTarget.clone().sub(this.controls.target).multiplyScalar(fraction);
       this.controls.target.add(delta);
-      this.camera.position.add(delta);
+      if (this.directionTarget) offset.lerp(this.directionTarget, fraction);
+      this.camera.position.copy(this.controls.target).add(offset);
       this.camera.zoom += (this.targetZoom - this.camera.zoom) * fraction;
       this.camera.updateProjectionMatrix();
       this.dirty = true;
       if (
-        this.controls.target.distanceTo(this.panTarget) < 0.01 &&
-        Math.abs(this.camera.zoom - this.targetZoom) < 0.01
+        this.controls.target.distanceTo(this.panTarget) < 0.001 &&
+        Math.abs(this.camera.zoom - this.targetZoom) < 0.001 &&
+        (!this.directionTarget || offset.distanceTo(this.directionTarget) < 0.001)
       )
-        this.panTarget = undefined;
+        this.cancelFocus();
     }
     this.controls.update();
     this.packet.visible = this.playing && !this.reduced && this.paths.length > 0;

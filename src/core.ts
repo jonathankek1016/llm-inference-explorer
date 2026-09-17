@@ -4,35 +4,58 @@ import type { Evidence, SceneId } from './content.ts';
 export type JourneyMode = 'MANUAL' | 'AUTO';
 export type GuidedFocus = 'TRACKING' | 'DETACHED';
 export interface JourneyControl {
+  active: boolean;
   journeyMode: JourneyMode;
   guidedFocus: GuidedFocus;
   playbackRequested: boolean;
 }
 export type JourneyAction =
-  { type: 'SET_MODE'; mode: JourneyMode } | { type: 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
+  | { type: 'SET_MODE'; mode: JourneyMode }
+  | { type: 'START' | 'NAVIGATE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
 
 export function createJourneyControl(): JourneyControl {
   // Preserve the existing ready-to-play replay, without starting a timer on load.
-  return { journeyMode: 'AUTO', guidedFocus: 'TRACKING', playbackRequested: false };
+  return { active: false, journeyMode: 'AUTO', guidedFocus: 'TRACKING', playbackRequested: false };
 }
 
 export function transitionJourney(state: JourneyControl, action: JourneyAction): JourneyControl {
   switch (action.type) {
     case 'SET_MODE':
-      return { ...state, journeyMode: action.mode, playbackRequested: action.mode === 'AUTO' };
+      return {
+        ...state,
+        active: state.active || action.mode === 'AUTO',
+        journeyMode: action.mode,
+        playbackRequested: action.mode === 'AUTO',
+      };
+    case 'START':
+      return {
+        ...state,
+        active: true,
+        guidedFocus: 'TRACKING',
+        playbackRequested: state.journeyMode === 'AUTO',
+      };
+    case 'NAVIGATE':
+      return { ...state, active: true };
     case 'PLAY':
-      return { ...state, playbackRequested: state.journeyMode === 'AUTO' };
+      return { ...state, active: true, playbackRequested: state.journeyMode === 'AUTO' };
     case 'PAUSE':
       return { ...state, playbackRequested: false };
     case 'DETACH':
-      return { ...state, guidedFocus: 'DETACHED' };
+      return state.active ? { ...state, guidedFocus: 'DETACHED' } : state;
     case 'RESUME':
-      return { ...state, guidedFocus: 'TRACKING', playbackRequested: state.journeyMode === 'AUTO' };
+      return state.active
+        ? { ...state, guidedFocus: 'TRACKING', playbackRequested: state.journeyMode === 'AUTO' }
+        : state;
   }
 }
 
 export function journeyAdvancing(state: JourneyControl): boolean {
-  return state.journeyMode === 'AUTO' && state.guidedFocus === 'TRACKING' && state.playbackRequested;
+  return (
+    state.active &&
+    state.journeyMode === 'AUTO' &&
+    state.guidedFocus === 'TRACKING' &&
+    state.playbackRequested
+  );
 }
 
 export interface TraceEvent {

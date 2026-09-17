@@ -6,11 +6,26 @@ test('initial replay is Auto and tracking, but does not advance until requested'
   const ready = createJourneyControl();
   assert.equal(ready.journeyMode, 'AUTO');
   assert.equal(ready.guidedFocus, 'TRACKING');
+  assert.equal(ready.active, false);
+  assert.equal(transitionJourney(ready, { type: 'DETACH' }), ready);
+  assert.equal(transitionJourney(ready, { type: 'RESUME' }), ready);
   assert.equal(journeyAdvancing(ready), false);
   const playing = transitionJourney(ready, { type: 'PLAY' });
   assert.equal(journeyAdvancing(playing), true);
   assert.equal(journeyAdvancing(transitionJourney(playing, { type: 'PAUSE' })), false);
   assert.equal(ready.playbackRequested, false);
+});
+
+test('starting and explicit navigation activate one journey; only restarting reattaches', () => {
+  const manual = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode: 'MANUAL' });
+  assert.equal(manual.active, false);
+  const started = transitionJourney(manual, { type: 'START' });
+  assert.equal(started.active, true);
+  assert.equal(journeyAdvancing(started), false);
+  const detached = transitionJourney(started, { type: 'DETACH' });
+  assert.equal(transitionJourney(detached, { type: 'NAVIGATE' }).guidedFocus, 'DETACHED');
+  assert.equal(transitionJourney(detached, { type: 'START' }).guidedFocus, 'TRACKING');
+  assert.equal(transitionJourney(createJourneyControl(), { type: 'NAVIGATE' }).active, true);
 });
 
 test('Auto detachment suspends progression without destroying Auto intent', () => {

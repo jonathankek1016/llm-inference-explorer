@@ -22,12 +22,12 @@ test('Manual and Auto share one timeline; detachment survives mode switches', as
   await expect(follow).not.toBeChecked();
   await page.clock.runFor(3000);
   await expect(page.locator('#timeline')).toHaveValue('2');
-  await follow.check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await page.clock.runFor(2700);
   await expect(page.locator('#timeline')).toHaveValue('3');
   await mode.selectOption('MANUAL');
   await follow.uncheck();
-  await follow.check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await page.clock.runFor(3000);
   await expect(mode).toHaveValue('MANUAL');
   await expect(page.locator('#timeline')).toHaveValue('3');
@@ -63,7 +63,7 @@ test('object exploration parks Auto; Resume uses the current stage across a scen
   await page.locator('.object-label[data-concept="gpu"]').click();
   await expect(page.locator('#inspector-header h2')).toHaveText('GPU accelerator');
   await expect(page.locator('#timeline')).toHaveValue('4');
-  await page.getByLabel('Follow journey', { exact: true }).check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await expect(page.locator('#inspector-header h2')).toHaveText('Service ingress');
   await expect(page.locator('.object-label[data-concept="ingress"]')).toHaveAttribute('aria-pressed', 'true');
   await page.clock.runFor(2700);
@@ -92,7 +92,7 @@ test('orbit and panel changes retain tracking; zoom and pan suspend Auto without
   await expect(follow).not.toBeChecked();
   await page.clock.runFor(4000);
   await expect(page.locator('#timeline')).toHaveValue('0');
-  await follow.check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await page.clock.runFor(1300);
   await expect(page.locator('#timeline')).toHaveValue('1');
   await page.mouse.move(650, 600);
@@ -111,11 +111,13 @@ test('Manual Resume returns from an explored scene and reacquires the official s
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.getByLabel('Journey mode', { exact: true }).selectOption('MANUAL');
   await page.getByLabel('Illustrative compute route', { exact: true }).selectOption('local');
+  await page.getByRole('button', { name: 'Start journey', exact: true }).click();
+  await page.getByRole('button', { name: 'Collapse inspector', exact: true }).click();
   await page.locator('.object-label[data-concept="gpu"]').click();
   await expect(page.locator('#scene-title')).toHaveText('On-device compute');
   await expect(page.locator('#timeline')).toHaveValue('0');
   await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
-  await page.getByLabel('Follow journey', { exact: true }).check();
+  await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await expect(page.locator('#scene-title')).toHaveText('The journey of an AI request');
   await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
   await expect(page.locator('#timeline')).toHaveValue('0');
