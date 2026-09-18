@@ -50,7 +50,7 @@ test('Manual never runs the timer, including Play and Resume after exploration',
 
 test('mode switches preserve attachment and only Auto tracking can advance', () => {
   for (const guidedFocus of ['TRACKING', 'DETACHED'] as const) {
-    const initial = { ...createJourneyControl(), guidedFocus };
+    const initial = { ...createJourneyControl(), active: true, guidedFocus };
     const auto = transitionJourney(initial, { type: 'SET_MODE', mode: 'AUTO' });
     assert.equal(auto.guidedFocus, guidedFocus);
     assert.equal(journeyAdvancing(auto), guidedFocus === 'TRACKING');

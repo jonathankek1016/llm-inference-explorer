@@ -3,11 +3,12 @@ import { test, expect, type Page } from '@playwright/test';
 // Observe the actual renderer in the browser without shipping a debug API.
 // All state changes below still go through the real controls and UI.
 async function prepare(page: Page) {
+  const sceneResponse = page.waitForResponse((response) => /\/src\/scene\.ts(?:\?|$)/.test(response.url()));
   await page.goto('/');
   await expect(page.locator('#viewport canvas')).toBeVisible();
+  const modulePath = (await sceneResponse).url();
   await page.clock.install();
-  await page.evaluate(async () => {
-    const modulePath = '/src/scene.ts';
+  await page.evaluate(async (modulePath) => {
     const { AtlasScene } = await import(/* @vite-ignore */ modulePath);
     const original = AtlasScene.prototype.focusJourneySubject;
     AtlasScene.prototype.focusJourneySubject = function (...args: unknown[]) {
@@ -25,7 +26,7 @@ async function prepare(page: Page) {
       });
       return applied;
     };
-  });
+  }, modulePath);
   await page.getByLabel('Journey mode', { exact: true }).selectOption('MANUAL');
   await page.getByRole('button', { name: 'Start journey', exact: true }).click();
   await page.clock.runFor(1800);

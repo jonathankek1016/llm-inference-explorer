@@ -14,6 +14,8 @@ import {
   createJourneyControl,
   transitionJourney,
   journeyAdvancing,
+  journeySuspended,
+  advanceJourneyTime,
 } from './core.ts';
 import type { Message, JourneyAction, JourneyMode } from './core.ts';
 import { requestText, validateEndpoint } from './provider.ts';
@@ -158,9 +160,12 @@ function setPlaying(value: boolean) {
 }
 function updateJourney(action: JourneyAction) {
   const starting = !journey.active;
+  const wasSuspended = journeySuspended(journey);
   journey = transitionJourney(journey, action);
+  // Exclude time across suspension boundaries even if no RAF ran in between.
+  if (wasSuspended !== journeySuspended(journey)) animationLast = performance.now();
   renderJourneyControl();
-  if (action.type === 'PLAY' || (action.type === 'SET_MODE' && action.mode === 'AUTO')) {
+  if (action.type === 'PLAY' || (action.type === 'SET_MODE' && action.mode === 'AUTO' && journey.active)) {
     const previousScene = state.scene;
     if (starting) selectConcept(frame.event.conceptId, { pause: false });
     focusJourneySubject(previousScene !== state.scene);
@@ -173,6 +178,7 @@ function focusJourneySubject(canonical = false) {
 function renderJourneyControl() {
   const advancing = journeyAdvancing(journey);
   if (atlas) {
+    atlas.setPresentationSuspended(journeySuspended(journey));
     atlas.playing = advancing;
     atlas.dirty = true;
   }
@@ -603,6 +609,7 @@ function openSettings() {
   $<HTMLInputElement>('provider-logprobs').checked = config.logprobs;
   $('settings-error').textContent = '';
   $<HTMLDialogElement>('settings-dialog').showModal();
+  updateJourney({ type: 'SET_SUSPENSION', reason: 'SETTINGS', suspended: true });
 }
 function search() {
   const q = $<HTMLInputElement>('search-input').value.trim().toLowerCase(),
@@ -830,6 +837,9 @@ $('settings-form').addEventListener('submit', (e) => {
 });
 $('settings-dialog').addEventListener('close', () => {
   $<HTMLInputElement>('provider-key').value = '';
+  // A queued close event must not release a newly reopened modal's suspension.
+  if (!$<HTMLDialogElement>('settings-dialog').open)
+    updateJourney({ type: 'SET_SUSPENSION', reason: 'SETTINGS', suspended: false });
 });
 // Native backdrop clicks target the dialog itself. Check bounds so clicks on
 // the panel's padding do not dismiss it, and slider drags ending outside are safe.
@@ -900,11 +910,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 function tick(time: number) {
-  const dt = Math.min(time - animationLast, 100);
+  const dt = time - animationLast;
   animationLast = time;
-  if (journeyAdvancing(journey) && !document.hidden) {
-    stageElapsed += dt * state.speed;
-    if (stageElapsed >= trace[state.position].duration) {
+  if (!document.hidden) {
+    stageElapsed = advanceJourneyTime(journey, stageElapsed, dt, state.speed);
+    if (journeyAdvancing(journey) && stageElapsed >= trace[state.position].duration) {
       if (state.position < trace.length - 1) seek(state.position + 1);
       else setPlaying(false);
     }

@@ -3,19 +3,28 @@ import type { Evidence, SceneId } from './content.ts';
 
 export type JourneyMode = 'MANUAL' | 'AUTO';
 export type GuidedFocus = 'TRACKING' | 'DETACHED';
+export type JourneySuspension = 'SETTINGS' | 'READING_HOLD';
 export interface JourneyControl {
   active: boolean;
   journeyMode: JourneyMode;
   guidedFocus: GuidedFocus;
   playbackRequested: boolean;
+  suspensions: readonly JourneySuspension[];
 }
 export type JourneyAction =
   | { type: 'SET_MODE'; mode: JourneyMode }
+  | { type: 'SET_SUSPENSION'; reason: JourneySuspension; suspended: boolean }
   | { type: 'START' | 'NAVIGATE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
 
 export function createJourneyControl(): JourneyControl {
   // Preserve the existing ready-to-play replay, without starting a timer on load.
-  return { active: false, journeyMode: 'AUTO', guidedFocus: 'TRACKING', playbackRequested: false };
+  return {
+    active: false,
+    journeyMode: 'AUTO',
+    guidedFocus: 'TRACKING',
+    playbackRequested: false,
+    suspensions: [],
+  };
 }
 
 export function transitionJourney(state: JourneyControl, action: JourneyAction): JourneyControl {
@@ -23,9 +32,17 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
     case 'SET_MODE':
       return {
         ...state,
-        active: state.active || action.mode === 'AUTO',
         journeyMode: action.mode,
-        playbackRequested: action.mode === 'AUTO',
+        playbackRequested: state.active && action.mode === 'AUTO',
+      };
+    case 'SET_SUSPENSION':
+      return {
+        ...state,
+        suspensions: action.suspended
+          ? state.suspensions.includes(action.reason)
+            ? state.suspensions
+            : [...state.suspensions, action.reason]
+          : state.suspensions.filter((reason) => reason !== action.reason),
       };
     case 'START':
       return {
@@ -49,13 +66,28 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
   }
 }
 
+export function journeySuspended(state: JourneyControl): boolean {
+  return state.suspensions.length > 0;
+}
+
 export function journeyAdvancing(state: JourneyControl): boolean {
   return (
     state.active &&
     state.journeyMode === 'AUTO' &&
     state.guidedFocus === 'TRACKING' &&
-    state.playbackRequested
+    state.playbackRequested &&
+    !journeySuspended(state)
   );
+}
+
+// Keep the existing bounded per-frame teaching clock; blocked time never accrues.
+export function advanceJourneyTime(
+  state: JourneyControl,
+  elapsed: number,
+  deltaMs: number,
+  speed = 1,
+): number {
+  return journeyAdvancing(state) ? elapsed + Math.max(0, Math.min(deltaMs, 100)) * speed : elapsed;
 }
 
 export interface TraceEvent {

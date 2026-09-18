@@ -108,7 +108,8 @@ export class AtlasScene {
   private panTarget?: T.Vector3;
   private directionTarget?: T.Vector3;
   private focusKind?: 'guided' | 'selection';
-  private packetStart = 0;
+  private packetElapsed = 0;
+  private presentationSuspended = false;
   private ray = new T.Raycaster();
   private pointer = new T.Vector2();
   private start = { x: 0, y: 0 };
@@ -746,7 +747,7 @@ export class AtlasScene {
     this.dirty = true;
   }
   setSelected(id: string) {
-    if (this.selected !== id) this.packetStart = performance.now();
+    if (this.selected !== id) this.packetElapsed = 0;
     this.selected = id;
     const node = this.nodes.find((n) => n.id === id);
     this.nodes.forEach((n) => {
@@ -860,6 +861,12 @@ export class AtlasScene {
     this.focusKind = undefined;
     this.targetZoom = this.camera.zoom;
   }
+  setPresentationSuspended(value: boolean) {
+    if (this.presentationSuspended === value) return;
+    this.presentationSuspended = value;
+    this.lastTime = performance.now();
+    this.dirty = true;
+  }
   reset() {
     this.cancelFocus();
     this.camera.position.set(11, 10.5, 15);
@@ -917,9 +924,9 @@ export class AtlasScene {
   private animate = (time: number) => {
     this.raf = requestAnimationFrame(this.animate);
     if (document.hidden) return;
-    const dt = Math.min((time - this.lastTime) / 1000, 0.1);
+    const dt = Math.max(0, Math.min((time - this.lastTime) / 1000, 0.1));
     this.lastTime = time;
-    if (this.panTarget && !this.userControlling) {
+    if (this.panTarget && !this.userControlling && !this.presentationSuspended) {
       const fraction = focusEase(dt, this.reduced),
         offset = this.camera.position.clone().sub(this.controls.target),
         delta = this.panTarget.clone().sub(this.controls.target).multiplyScalar(fraction);
@@ -936,9 +943,12 @@ export class AtlasScene {
       )
         this.cancelFocus();
     }
-    this.controls.update();
-    this.packet.visible = this.playing && !this.reduced && this.paths.length > 0;
-    if (this.packet.visible) {
+    if (!this.presentationSuspended) {
+      this.controls.update();
+      this.packet.visible = this.playing && !this.reduced && this.paths.length > 0;
+    }
+    if (this.packet.visible && !this.presentationSuspended) {
+      this.packetElapsed += dt * 1000;
       const index =
         this.sceneId === 'world'
           ? this.local
@@ -951,9 +961,7 @@ export class AtlasScene {
               this.nodes.findIndex((n) => n.id === this.selected),
             );
       const path = this.paths[Math.min(index, this.paths.length - 1)];
-      // Selection may start later in this same animation frame than its shared
-      // timestamp. Never pass a negative curve position to Three.js.
-      this.packet.position.copy(path.getPointAt((Math.max(0, time - this.packetStart) / 1800) % 1));
+      this.packet.position.copy(path.getPointAt((this.packetElapsed / 1800) % 1));
       this.packet.position.y += 0.06;
       this.dirty = true;
     }
