@@ -24,6 +24,8 @@ import type { AtlasScene } from './scene.ts';
 import { palettes, readAppearance, readDarkAppearance, makeTheme } from './theme.ts';
 import { ColourPicker } from './colour-picker.ts';
 import { defaultGridIntensity } from './grid.ts';
+import { calloutPresentation, openCallout } from './callouts.ts';
+import type { ExplorationCallout } from './callouts.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -60,6 +62,7 @@ const state = {
   dark: read<string>('atlas-theme', 'light') === 'dark',
 };
 let journey = createJourneyControl();
+let exploratoryCallouts: ExplorationCallout[] = [];
 const remoteOnly = new Set(['router', 'internet', 'datacenter', 'ingress', 'rack']);
 let appearance = readAppearance(read<unknown>('atlas-appearance', null));
 let darkAppearance = readDarkAppearance(read<unknown>('atlas-dark-appearance', 0));
@@ -198,6 +201,21 @@ function renderJourneyControl() {
   playback.dataset.guidedFocus = journey.guidedFocus;
   playback.dataset.advancing = String(advancing);
   playback.dataset.journeyActive = String(journey.active);
+  renderCallouts();
+}
+function renderCallouts() {
+  atlas?.setCallouts(
+    calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts),
+    (conceptId) => {
+      exploratoryCallouts = exploratoryCallouts.filter((item) => item.conceptId !== conceptId);
+      renderCallouts();
+    },
+    (conceptId) => {
+      if (journey.active && conceptId !== frame.event.conceptId) detachGuidedFocus();
+      selectConcept(conceptId, { pause: false, keepScene: true });
+      showPanel('inspector');
+    },
+  );
 }
 function detachGuidedFocus() {
   atlas?.cancelFocus();
@@ -371,6 +389,7 @@ function seek(position: number) {
   renderPlayback();
 }
 function renderPlayback() {
+  renderCallouts();
   $<HTMLInputElement>('timeline').max = String(trace.length - 1);
   $<HTMLInputElement>('timeline').value = String(frame.index);
   $('playback-position').textContent = `${String(frame.index + 1).padStart(2, '0')} / ${trace.length}`;
@@ -1006,6 +1025,10 @@ import('./scene.ts')
           // A scene-object inspection changes exploration selection, not the
           // official trace position, scenario, or accumulated teaching time.
           selectConcept(id, { pause: !journey.active, keepScene: id === 'cache' && state.scene === 'block' });
+          if (!journey.active || id !== frame.event.conceptId) {
+            exploratoryCallouts = openCallout(exploratoryCallouts, id, state.scene);
+            renderCallouts();
+          }
           showPanel('inspector');
         },
         detachGuidedFocus,

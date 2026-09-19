@@ -12,7 +12,14 @@ async function prepare(page: Page) {
     const { AtlasScene } = await import(/* @vite-ignore */ modulePath);
     const original = AtlasScene.prototype.focusJourneySubject;
     AtlasScene.prototype.focusJourneySubject = function (...args: unknown[]) {
+      const transform = () => ({
+        position: this.camera.position.toArray(),
+        target: this.controls.target.toArray(),
+        zoom: this.camera.zoom,
+      });
+      const before = transform();
       const applied = original.apply(this, args);
+      (window as any).__focusRequest = { before, after: transform() };
       const subject = args[0];
       (window as any).__cameraRead = () => ({
         position: this.camera.position.toArray(),
@@ -59,8 +66,11 @@ test('same-scene guided motion is eased, preserves orbit, and focuses Next and P
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'TRACKING');
   await expect(page.locator('#timeline')).toHaveValue('0');
   await page.getByRole('button', { name: 'Next stage', exact: true }).click();
-  const immediate = await read(page);
-  near(immediate.target, before.target);
+  // A real click may consume an animation frame before Playwright returns.
+  // Check for snapping at the actual focus request boundary instead.
+  const request = await page.evaluate(() => (window as any).__focusRequest);
+  expect(request.after).toEqual(request.before);
+  near(request.before.target, before.target);
   await page.clock.runFor(160);
   const first = await read(page);
   await page.clock.runFor(160);

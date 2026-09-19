@@ -9,6 +9,8 @@ import type { Appearance } from './theme.ts';
 import { defaultGridIntensity, gridOpacity } from './grid.ts';
 import { focusEase, resolveGuidedFraming } from './camera.ts';
 import type { FocusFraming } from './camera.ts';
+import { CalloutLayer } from './callout-layer.ts';
+import type { Callout } from './callouts.ts';
 
 const palette = {
   white: '#edf2f0',
@@ -129,6 +131,7 @@ export class AtlasScene {
   private userControlling = false;
   private controlsTarget = new T.Vector3();
   private controlsZoom = 1;
+  private callouts?: CalloutLayer;
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
@@ -833,6 +836,29 @@ export class AtlasScene {
       );
     }
   }
+  setCallouts(
+    models: readonly Callout[],
+    onClose: (concept: string) => void,
+    onInspect: (concept: string) => void,
+  ) {
+    this.callouts ??= new CalloutLayer(this.container.parentElement!, onClose, onInspect);
+    this.callouts.setModels(models);
+    this.projectCallouts();
+  }
+  private projectCallouts() {
+    this.callouts?.project(this.sceneId, (subject) => {
+      // Reuse the authored object-label anchor; repeated Block concepts use the
+      // same first-instance identity as guided focus. Resolve afresh after builds.
+      const node = this.nodes.find((node) => node.id === subject);
+      if (!node) return undefined;
+      const point = node.anchor.clone().project(this.camera);
+      return {
+        x: (point.x * 0.5 + 0.5) * this.container.clientWidth,
+        y: (-point.y * 0.5 + 0.5) * this.container.clientHeight,
+        visible: Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1 && Math.abs(point.z) <= 1,
+      };
+    });
+  }
   focusJourneySubject(subject: string, canonical = false) {
     const node = this.nodes.find((n) => n.id === subject);
     const framing = resolveGuidedFraming(
@@ -968,6 +994,7 @@ export class AtlasScene {
     if (!this.dirty) return;
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
+    this.projectCallouts();
     this.dirty = false;
   };
   private updateLabels() {
@@ -1010,6 +1037,7 @@ export class AtlasScene {
     this.root.clear();
   }
   dispose() {
+    this.callouts?.dispose();
     cancelAnimationFrame(this.raf);
     this.observer.disconnect();
     this.controls.dispose();
