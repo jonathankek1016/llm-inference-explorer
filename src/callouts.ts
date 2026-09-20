@@ -1,6 +1,7 @@
 import { concepts } from './content.ts';
 import type { SceneId } from './content.ts';
 import type { JourneyControl, TraceEvent } from './core.ts';
+import type { CalloutRegion } from './framing.ts';
 
 export interface ExplorationCallout {
   conceptId: string;
@@ -14,6 +15,7 @@ export interface Callout extends ExplorationCallout {
   position?: string;
   detail?: string;
   detached?: boolean;
+  preferredCalloutRegion?: CalloutRegion;
 }
 
 // One remembered reference per concept; reopening raises it and remembers its view.
@@ -85,19 +87,24 @@ export function placeCallout(
   height: number,
   bounds: CalloutBounds,
   below = false,
+  region: CalloutRegion = 'auto',
 ) {
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(n, Math.max(min, max)));
   const right = anchor && anchor.x + 28 + width <= bounds.right;
+  let x = anchor ? (right ? anchor.x + 28 : anchor.x - width - 28) : bounds.right - width;
+  let y = anchor ? (below ? anchor.y + 24 : anchor.y - height - 24) : bounds.top;
+  if (anchor && region !== 'auto') {
+    if (region === 'above' || region === 'below') x = anchor.x - width / 2;
+    else x = region.includes('left') ? anchor.x - width - 28 : anchor.x + 28;
+    y =
+      region === 'below'
+        ? anchor.y + 24
+        : region.startsWith('upper') || region === 'above'
+          ? anchor.y - height - 24
+          : anchor.y - height / 2;
+  }
   return {
-    x: clamp(
-      anchor ? (right ? anchor.x + 28 : anchor.x - width - 28) : bounds.right - width,
-      bounds.left,
-      bounds.right - width,
-    ),
-    y: clamp(
-      anchor ? (below ? anchor.y + 24 : anchor.y - height - 24) : bounds.top,
-      bounds.top,
-      bounds.bottom - height,
-    ),
+    x: clamp(x, bounds.left, bounds.right - width),
+    y: clamp(y, bounds.top, bounds.bottom - height),
   };
 }

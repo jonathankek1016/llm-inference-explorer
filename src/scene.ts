@@ -11,6 +11,8 @@ import { focusEase, resolveGuidedFraming } from './camera.ts';
 import type { FocusFraming } from './camera.ts';
 import { CalloutLayer } from './callout-layer.ts';
 import type { Callout } from './callouts.ts';
+import { resolveComposition, resolveFramingProfile } from './framing.ts';
+import type { Point3 } from './framing.ts';
 
 const palette = {
   white: '#edf2f0',
@@ -132,6 +134,9 @@ export class AtlasScene {
   private controlsTarget = new T.Vector3();
   private controlsZoom = 1;
   private callouts?: CalloutLayer;
+  private composition = new T.Vector2();
+  private compositionTarget = new T.Vector2();
+  private viewportOffset = new T.Vector2();
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
@@ -859,26 +864,55 @@ export class AtlasScene {
       };
     });
   }
-  focusJourneySubject(subject: string, canonical = false) {
+  guidedCalloutSize() {
+    return this.callouts?.guidedSize();
+  }
+  /** Capture the actual current pose; reading this never moves the camera. */
+  capturePose(subject: string) {
+    const node = this.nodes.find((n) => n.id === subject);
+    if (!node) return undefined;
+    return {
+      guidedZoom: this.camera.zoom,
+      anchorOffset: this.controls.target.clone().sub(node.group.position).toArray() as [
+        number,
+        number,
+        number,
+      ],
+      compositionOffset: this.composition.toArray() as [number, number],
+      cameraOrientation: this.camera.position.clone().sub(this.controls.target).toArray() as [
+        number,
+        number,
+        number,
+      ],
+    };
+  }
+  focusJourneySubject(
+    subject: string,
+    canonical = false,
+    profile = resolveFramingProfile(this.sceneId, subject, undefined, canonical),
+  ) {
     const node = this.nodes.find((n) => n.id === subject);
     const framing = resolveGuidedFraming(
       this.sceneId,
       subject,
       node?.group.position.toArray() as [number, number, number] | undefined,
+      profile,
     );
     if (!framing) {
       this.cancelFocus();
       return false;
     }
-    this.beginFocus(framing, 'guided', canonical);
+    this.beginFocus(framing, 'guided', canonical ? profile.cameraOrientation : undefined);
+    this.compositionTarget.set(...resolveComposition(profile, this.guidedCalloutSize()));
     return true;
   }
-  private beginFocus(framing: FocusFraming, kind: 'guided' | 'selection', canonical = false) {
+  private beginFocus(framing: FocusFraming, kind: 'guided' | 'selection', orientation?: Point3) {
     this.panTarget = new T.Vector3(...framing.target);
     this.targetZoom = framing.zoom;
     this.focusKind = kind;
     // Canonical scene viewing direction, eased by the same focus animation.
-    this.directionTarget = canonical ? new T.Vector3(11, 9.7, 14.7) : undefined;
+    this.directionTarget = orientation ? new T.Vector3(...orientation) : undefined;
+    this.compositionTarget.set(0, 0);
     this.dirty = true;
   }
   cancelFocus() {
@@ -886,6 +920,7 @@ export class AtlasScene {
     this.directionTarget = undefined;
     this.focusKind = undefined;
     this.targetZoom = this.camera.zoom;
+    this.compositionTarget.copy(this.composition);
   }
   setPresentationSuspended(value: boolean) {
     if (this.presentationSuspended === value) return;
@@ -898,8 +933,10 @@ export class AtlasScene {
     this.camera.position.set(11, 10.5, 15);
     this.controls.target.set(0, 0.8, 0.3);
     this.camera.zoom = 1;
+    this.composition.set(0, 0);
+    this.compositionTarget.set(0, 0);
     this.targetZoom = 1;
-    this.camera.updateProjectionMatrix();
+    this.applyComposition();
     this.controls.update();
     this.dirty = true;
   }
@@ -922,15 +959,24 @@ export class AtlasScene {
     this.camera.right = (width * unitsPerPixel) / 2;
     this.camera.top = (height * unitsPerPixel) / 2;
     this.camera.bottom = (-height * unitsPerPixel) / 2;
+    this.viewportOffset.set(
+      width / 2 - (frame.left - bounds.left + frame.width / 2),
+      height / 2 - (frame.top - bounds.top + frame.height / 2),
+    );
+    this.applyComposition();
+    this.dirty = true;
+  }
+  private applyComposition() {
+    const width = this.container.clientWidth,
+      height = this.container.clientHeight;
     this.camera.setViewOffset(
       width,
       height,
-      width / 2 - (frame.left - bounds.left + frame.width / 2),
-      height / 2 - (frame.top - bounds.top + frame.height / 2),
+      this.viewportOffset.x - this.composition.x,
+      this.viewportOffset.y - this.composition.y,
       width,
       height,
     );
-    this.dirty = true;
   }
   private pick = (e: PointerEvent) => {
     if (Math.hypot(e.clientX - this.start.x, e.clientY - this.start.y) > 5) return;
@@ -960,11 +1006,13 @@ export class AtlasScene {
       if (this.directionTarget) offset.lerp(this.directionTarget, fraction);
       this.camera.position.copy(this.controls.target).add(offset);
       this.camera.zoom += (this.targetZoom - this.camera.zoom) * fraction;
-      this.camera.updateProjectionMatrix();
+      this.composition.lerp(this.compositionTarget, fraction);
+      this.applyComposition();
       this.dirty = true;
       if (
         this.controls.target.distanceTo(this.panTarget) < 0.001 &&
         Math.abs(this.camera.zoom - this.targetZoom) < 0.001 &&
+        this.composition.distanceTo(this.compositionTarget) < 0.01 &&
         (!this.directionTarget || offset.distanceTo(this.directionTarget) < 0.001)
       )
         this.cancelFocus();

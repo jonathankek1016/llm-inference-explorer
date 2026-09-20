@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 await mkdir('artifacts', { recursive: true });
@@ -28,10 +28,19 @@ await page.addInitScript(() => {
   }
 });
 const start = Date.now();
-await page.goto('http://127.0.0.1:4173/');
+// Even an explicit authoring query must not expose development controls in a build.
+for (const file of await readdir('dist/assets')) {
+  if (/\.(js|css)$/.test(file))
+    assert(
+      !(await readFile(`dist/assets/${file}`, 'utf8')).includes('framing-calibration'),
+      'Calibration UI leaked into production assets',
+    );
+}
+await page.goto('http://127.0.0.1:4173/?calibrate=1');
 await page.locator('#viewport canvas').waitFor();
 await page.evaluate(() => document.fonts.ready);
 await page.locator('.object-label').first().waitFor();
+assert.equal(await page.locator('#framing-calibration').count(), 0);
 const readyMs = Date.now() - start;
 await page.screenshot({ path: 'artifacts/final-overview.png' });
 const intervalCount = async () =>
@@ -126,6 +135,7 @@ const result = {
   date: new Date().toISOString(),
   browser: await browser.version(),
   readyMs,
+  calibrationUiAbsent: true,
   idleDrawCallsPer500ms: idleDrawCalls,
   playbackDrawCallsPer500ms: playbackDrawCalls,
   rendering,

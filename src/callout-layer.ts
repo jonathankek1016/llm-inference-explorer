@@ -136,7 +136,14 @@ export class CalloutLayer {
       const guided = this.views.get('guided')?.model;
       const sharesGuidedSubject =
         model.role === 'exploratory' && guided?.scene === model.scene && guided.conceptId === model.conceptId;
-      const { x, y } = placeCallout(anchor, card.offsetWidth, card.offsetHeight, bounds, sharesGuidedSubject);
+      const { x, y } = placeCallout(
+        anchor,
+        card.offsetWidth,
+        card.offsetHeight,
+        bounds,
+        sharesGuidedSubject,
+        model.preferredCalloutRegion,
+      );
       card.style.transform = `translate(${x}px, ${y}px)`;
       if (anchor) {
         line.setAttribute('x1', String(anchor.x));
@@ -145,6 +152,18 @@ export class CalloutLayer {
         line.setAttribute('y2', String(Math.max(y + 12, Math.min(anchor.y, y + card.offsetHeight - 12))));
       }
     }
+  }
+
+  guidedSize() {
+    const card = this.views.get('guided')?.card;
+    if (!card) return undefined;
+    // A new subject may begin outside the viewport. Measure synchronously before
+    // its focus transition without making an off-screen annotation stay visible.
+    const hidden = card.hidden;
+    card.hidden = false;
+    const size = { width: card.offsetWidth, height: card.offsetHeight };
+    card.hidden = hidden;
+    return size;
   }
 
   private bounds(): CalloutBounds {

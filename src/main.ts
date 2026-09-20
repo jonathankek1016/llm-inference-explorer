@@ -26,6 +26,9 @@ import { ColourPicker } from './colour-picker.ts';
 import { defaultGridIntensity } from './grid.ts';
 import { calloutPresentation, openCallout } from './callouts.ts';
 import type { ExplorationCallout } from './callouts.ts';
+import { framingStageKey, resolveFramingProfile, teachingDuration } from './framing.ts';
+import type { FramingRegistry } from './framing.ts';
+import type { CalibrationPanel } from './calibration.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -63,6 +66,9 @@ const state = {
 };
 let journey = createJourneyControl();
 let exploratoryCallouts: ExplorationCallout[] = [];
+let framingDrafts: FramingRegistry = {};
+let entryFraming = false;
+let calibration: CalibrationPanel | undefined;
 const remoteOnly = new Set(['router', 'internet', 'datacenter', 'ingress', 'rack']);
 let appearance = readAppearance(read<unknown>('atlas-appearance', null));
 let darkAppearance = readDarkAppearance(read<unknown>('atlas-dark-appearance', 0));
@@ -175,8 +181,21 @@ function updateJourney(action: JourneyAction) {
   }
 }
 function focusJourneySubject(canonical = false) {
-  if (journey.active && journey.guidedFocus === 'TRACKING')
-    atlas?.focusJourneySubject(frame.event.conceptId, canonical);
+  if (journey.active && journey.guidedFocus === 'TRACKING') {
+    entryFraming = canonical;
+    // Measure the new stage's real callout before composing its shot.
+    renderCallouts();
+    atlas?.focusJourneySubject(frame.event.conceptId, canonical, currentFraming(canonical));
+  }
+}
+function currentFraming(entry = false) {
+  return resolveFramingProfile(
+    frame.scene,
+    frame.event.conceptId,
+    framingStageKey(frame.event, state.local),
+    entry,
+    framingDrafts,
+  );
 }
 function renderJourneyControl() {
   const advancing = journeyAdvancing(journey);
@@ -202,10 +221,14 @@ function renderJourneyControl() {
   playback.dataset.advancing = String(advancing);
   playback.dataset.journeyActive = String(journey.active);
   renderCallouts();
+  calibration?.refresh();
 }
 function renderCallouts() {
+  const cards = calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts);
+  const guided = cards.find((card) => card.role === 'guided');
+  if (guided) guided.preferredCalloutRegion = currentFraming(entryFraming).preferredCalloutRegion;
   atlas?.setCallouts(
-    calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts),
+    cards,
     (conceptId) => {
       exploratoryCallouts = exploratoryCallouts.filter((item) => item.conceptId !== conceptId);
       renderCallouts();
@@ -381,6 +404,7 @@ function renderStages() {
 function seek(position: number) {
   const previousScene = state.scene;
   frame = frameAt(trace, position);
+  entryFraming = false;
   state.position = frame.index;
   stageElapsed = 0;
   atlas?.setProgress(frame.decode, frame.refinement);
@@ -390,6 +414,7 @@ function seek(position: number) {
 }
 function renderPlayback() {
   renderCallouts();
+  calibration?.refresh();
   $<HTMLInputElement>('timeline').max = String(trace.length - 1);
   $<HTMLInputElement>('timeline').value = String(frame.index);
   $('playback-position').textContent = `${String(frame.index + 1).padStart(2, '0')} / ${trace.length}`;
@@ -933,7 +958,10 @@ function tick(time: number) {
   animationLast = time;
   if (!document.hidden) {
     stageElapsed = advanceJourneyTime(journey, stageElapsed, dt, state.speed);
-    if (journeyAdvancing(journey) && stageElapsed >= trace[state.position].duration) {
+    if (
+      journeyAdvancing(journey) &&
+      stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts)
+    ) {
       if (state.position < trace.length - 1) seek(state.position + 1);
       else setPlaying(false);
     }
@@ -1044,6 +1072,40 @@ import('./scene.ts')
       atlas.setSelected(state.selected);
       renderJourneyControl();
       focusJourneySubject();
+      if (import.meta.env.DEV && new URLSearchParams(location.search).get('calibrate') === '1') {
+        void import('./calibration.ts').then(({ CalibrationPanel }) => {
+          calibration = new CalibrationPanel({
+            read: (entry) => ({
+              key: framingStageKey(frame.event, state.local),
+              scene: frame.scene,
+              index: frame.index,
+              stages: trace.map(
+                (event, i) =>
+                  `${i + 1}. ${concepts[event.conceptId].title}${event.kind === 'decode' ? ` · pass ${event.payload.decode}` : event.kind === 'denoise' ? ` · step ${event.payload.refinement}` : ''}`,
+              ),
+              profile: currentFraming(entry),
+              duration: teachingDuration(frame.event, state.local, framingDrafts),
+              card: atlas?.guidedCalloutSize(),
+              pose: atlas?.sceneId === frame.scene ? atlas.capturePose(frame.event.conceptId) : undefined,
+              active: journey.active,
+            }),
+            choose: (index) => {
+              updateJourney({ type: 'SET_MODE', mode: 'MANUAL' });
+              updateJourney({ type: 'START' });
+              seek(index);
+            },
+            change: (drafts, entry, timingOnly) => {
+              framingDrafts = drafts;
+              if (!timingOnly && journey.active) {
+                selectConcept(frame.event.conceptId, { pause: false });
+                if (journey.guidedFocus === 'DETACHED') updateJourney({ type: 'RESUME' });
+                focusJourneySubject(entry);
+              }
+              calibration?.refresh();
+            },
+          });
+        });
+      }
     } catch {
       fallback();
     }
