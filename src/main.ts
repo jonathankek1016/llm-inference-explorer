@@ -29,6 +29,7 @@ import type { ExplorationCallout } from './callouts.ts';
 import { framingStageKey, resolveFramingProfile, teachingDuration } from './framing.ts';
 import type { FramingRegistry } from './framing.ts';
 import type { CalibrationPanel } from './calibration.ts';
+import { ReadingHold, observeReading } from './reading-hold.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -134,6 +135,32 @@ let config: ProviderConfig = {
   key: '',
 };
 $('app').innerHTML = shell;
+const readingHold = new ReadingHold((suspended) =>
+  updateJourney({ type: 'SET_SUSPENSION', reason: 'READING_HOLD', suspended }),
+);
+function readingContext() {
+  const panel = $('inspector-panel');
+  return {
+    journey,
+    stage: `${frame.event.runId}:${framingStageKey(frame.event, state.local)}`,
+    subject: frame.event.conceptId,
+    selection: state.selected,
+    inspectorVisible:
+      !panel.classList.contains('collapsed') && (innerWidth > 980 || panel.classList.contains('mobile-open')),
+  };
+}
+observeReading(document, readingHold, readingContext);
+function renderInspectorContext() {
+  const current = journey.active && state.selected === frame.event.conceptId;
+  $('inspector-panel').dataset.subjectRole = current ? 'current' : 'exploration';
+  const context = $('inspector-panel').querySelector<HTMLElement>('.inspector-footer > span:last-child')!;
+  context.setAttribute('role', 'status');
+  context.textContent = journey.suspensions.includes('READING_HOLD')
+    ? 'Reading · Auto held'
+    : current
+      ? 'Current subject · deeper reference'
+      : 'Exploring · deeper reference';
+}
 function applyThemeTokens() {
   const { tokens } = makeTheme(appearance, state.dark, darkAppearance);
   for (const [name, value] of Object.entries(tokens))
@@ -198,6 +225,7 @@ function currentFraming(entry = false) {
   );
 }
 function renderJourneyControl() {
+  readingHold.sync(readingContext(), performance.now());
   const advancing = journeyAdvancing(journey);
   if (atlas) {
     atlas.setPresentationSuspended(journeySuspended(journey));
@@ -220,10 +248,15 @@ function renderJourneyControl() {
   playback.dataset.guidedFocus = journey.guidedFocus;
   playback.dataset.advancing = String(advancing);
   playback.dataset.journeyActive = String(journey.active);
+  playback.dataset.suspensions = journey.suspensions.join(' ');
+  renderInspectorContext();
   renderCallouts();
   calibration?.refresh();
 }
 function renderCallouts() {
+  atlas?.setGuidedEmphasis(
+    journey.active && journey.guidedFocus === 'TRACKING' ? frame.event.conceptId : undefined,
+  );
   const cards = calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts);
   const guided = cards.find((card) => card.role === 'guided');
   if (guided) guided.preferredCalloutRegion = currentFraming(entryFraming).preferredCalloutRegion;
@@ -268,6 +301,7 @@ function showPanel(which: 'journey' | 'inspector', show = true) {
     $(`${other}-panel`).classList.remove('mobile-open');
     $(`${which}-panel`).classList.add('mobile-open');
   }
+  readingHold.sync(readingContext(), performance.now());
 }
 function setTab(tab: string) {
   state.tab = tab;
@@ -352,6 +386,7 @@ function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; 
     }
   }
   state.selected = id;
+  readingHold.sync(readingContext(), performance.now());
   if (!options.keepScene) changeScene(concepts[id].scene);
   atlas?.setSelected(id);
   if (options.focus) atlas?.focus();
@@ -404,6 +439,7 @@ function renderStages() {
 function seek(position: number) {
   const previousScene = state.scene;
   frame = frameAt(trace, position);
+  readingHold.sync(readingContext(), performance.now());
   entryFraming = false;
   state.position = frame.index;
   stageElapsed = 0;
@@ -427,6 +463,7 @@ function renderPlayback() {
 }
 function renderInspector() {
   const c = concepts[state.selected];
+  renderInspectorContext();
   $('inspector-header').innerHTML =
     `<div class="concept-symbol">${icon(c.scene === 'world' ? 'expand' : 'cube')}</div><span class="eyebrow">${c.category}</span><h2>${c.title}</h2><p>${c.short}</p>`;
   ['learn', 'data', 'sources'].forEach((t) =>
@@ -434,7 +471,7 @@ function renderInspector() {
   );
   if (state.inspector === 'learn')
     $('inspector-body').innerHTML =
-      `<h3>What happens here</h3><p>${c.description}</p><dl class="io"><div><dt>↳ INPUT</dt><dd>${c.input}</dd></div><div><dt>↗ OUTPUT</dt><dd>${c.output}</dd></div></dl>${c.enter ? `<button class="enter-scene" data-scene="${c.enter}">Inspect ${c.enter === 'compute' ? 'the hardware' : c.enter === 'model' ? 'inference' : 'this block'} ${icon('expand')}</button>` : ''}<details class="deeper"><summary>A closer look</summary><p>${c.deeper}</p></details><div class="related"><h3>Connected concepts</h3>${c.related.map((id) => `<button data-concept="${id}">${concepts[id].title} <span>↗</span></button>`).join('')}</div>`;
+      `<h3>Deeper context</h3><p>${c.deeper}</p><dl class="io"><div><dt>↳ INPUT</dt><dd>${c.input}</dd></div><div><dt>↗ OUTPUT</dt><dd>${c.output}</dd></div></dl>${c.enter ? `<button class="enter-scene" data-scene="${c.enter}">Inspect ${c.enter === 'compute' ? 'the hardware' : c.enter === 'model' ? 'inference' : 'this block'} ${icon('expand')}</button>` : ''}<details class="deeper"><summary>Stage overview</summary><p>${c.description}</p></details><div class="related"><h3>Connected concepts</h3>${c.related.map((id) => `<button data-concept="${id}">${concepts[id].title} <span>↗</span></button>`).join('')}</div>`;
   else if (state.inspector === 'sources')
     $('inspector-body').innerHTML =
       `<h3>Grounded in public documentation</h3><p>These sources describe the underlying concepts, not a trace of your selected provider.</p><div class="source-list">${c.sources.map((id) => `<a href="${sources[id].url}" target="_blank" rel="noreferrer">${sources[id].title} ${icon('expand')}</a>`).join('')}</div><h3>What is simplified</h3><p>${c.deeper}</p>`;
@@ -942,6 +979,8 @@ document.addEventListener('keydown', (e) => {
     $('search-open').click();
   }
   if ((e.target as HTMLElement).matches('button, a, summary')) return;
+  // Reading keys scroll/select reference content; they are not replay commands.
+  if ((e.target as HTMLElement).closest('#inspector-panel, .world-callout')) return;
   if (e.key === ' ') {
     e.preventDefault();
     $('play').click();
@@ -954,6 +993,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 function tick(time: number) {
+  readingHold.sync(readingContext(), performance.now());
   const dt = time - animationLast;
   animationLast = time;
   if (!document.hidden) {

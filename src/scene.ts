@@ -13,6 +13,7 @@ import { CalloutLayer } from './callout-layer.ts';
 import type { Callout } from './callouts.ts';
 import { resolveComposition, resolveFramingProfile } from './framing.ts';
 import type { Point3 } from './framing.ts';
+import { GuidedEmphasis } from './emphasis.ts';
 
 const palette = {
   white: '#edf2f0',
@@ -137,6 +138,8 @@ export class AtlasScene {
   private composition = new T.Vector2();
   private compositionTarget = new T.Vector2();
   private viewportOffset = new T.Vector2();
+  private emphasis = new GuidedEmphasis();
+  private guidedSubject?: string;
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
@@ -751,6 +754,8 @@ export class AtlasScene {
       this.connect([3.3, 0.3, 0.1], [4.1, 0.3, 1.5]);
     }
     this.setSelected(this.selected);
+    this.emphasis.prepare(this.root);
+    this.setGuidedEmphasis(this.guidedSubject);
     this.applyColours();
     this.dirty = true;
   }
@@ -772,6 +777,13 @@ export class AtlasScene {
   setPalette(appearance: Appearance) {
     this.colourMap = sceneColours(appearance);
     this.applyColours();
+  }
+  setGuidedEmphasis(subject?: string) {
+    this.guidedSubject = subject;
+    // A scene-level stage with no visible subject must not subdue everything.
+    const visible = this.nodes.some((node) => node.id === subject) ? subject : undefined;
+    this.emphasis.setSubject(visible);
+    this.nodes.forEach((node) => node.label.toggleAttribute('data-guided-subject', node.id === visible));
   }
   private applyColours() {
     this.scene.traverse((object) => {
@@ -1018,6 +1030,7 @@ export class AtlasScene {
         this.cancelFocus();
     }
     if (!this.presentationSuspended) {
+      if (this.emphasis.update(dt, this.reduced)) this.dirty = true;
       this.controls.update();
       this.packet.visible = this.playing && !this.reduced && this.paths.length > 0;
     }
@@ -1070,6 +1083,7 @@ export class AtlasScene {
       });
   }
   private disposeRoot() {
+    this.emphasis.clear();
     this.root.traverse((obj) => {
       if (obj instanceof T.Mesh || obj instanceof T.Line) {
         if (obj.geometry !== this.boxGeometry && obj.geometry !== this.sphereGeometry) obj.geometry.dispose();
