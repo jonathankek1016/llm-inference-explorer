@@ -42,7 +42,7 @@ test('overview, nested views, search, inspectable branches, and deterministic ti
   await expect(page.locator('#current-stage')).toContainText('pass 3');
   await page.locator('#timeline').fill('0');
   await expect(page.locator('#scene-title')).toHaveText('The journey of an AI request');
-  await page.getByRole('button', { name: 'Play journey', exact: true }).click();
+  await page.locator('#play').click();
   await page.getByRole('button', { name: 'Pause journey', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Play journey', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -183,17 +183,17 @@ test('camera orbit, zoom, focus, labels, local route and playback controls', asy
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width * 0.65, rect.y + rect.height * 0.65, { steps: 10 });
   await page.mouse.up();
-  await expect(page.getByLabel('Follow journey', { exact: true })).toBeChecked();
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'TRACKING');
   expect(Buffer.compare(before, await canvas.screenshot())).not.toBe(0);
   const orbited = await canvas.screenshot();
   await page.mouse.wheel(0, -180);
-  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
   expect(Buffer.compare(orbited, await canvas.screenshot())).not.toBe(0);
   await page.getByRole('button', { name: 'Reset camera', exact: true }).click();
   const reset = await canvas.screenshot();
   await page.getByRole('button', { name: 'Focus selection', exact: true }).click();
   expect(Buffer.compare(reset, await canvas.screenshot())).not.toBe(0);
-  await page.getByRole('button', { name: 'Fit scene', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset camera', exact: true }).click();
   await page.getByRole('button', { name: 'Toggle object labels', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Toggle object labels', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -243,7 +243,7 @@ test('every stage in every story is reachable without network side effects', asy
 test('complete playback visits every stage of all four scenarios and stops at the return', async ({
   page,
 }) => {
-  test.setTimeout(110000);
+  test.setTimeout(260000);
   // Capture window errors even when the development server handles them before
   // Playwright's pageerror event. Playback must finish without renderer errors.
   await page.addInitScript(() => {
@@ -259,9 +259,9 @@ test('complete playback visits every stage of all four scenarios and stops at th
   for (const scenario of ['text', 'tools', 'vision', 'diffusion']) {
     await page.getByLabel('Scenario', { exact: true }).selectOption(scenario);
     const last = Number(await page.locator('#timeline').getAttribute('max'));
-    await page.getByRole('button', { name: 'Play journey', exact: true }).click();
+    await page.locator('#replay').click();
     for (let stage = 1; stage <= last; stage++) {
-      await expect(page.locator('#timeline')).toHaveValue(String(stage), { timeout: 5000 });
+      await expect(page.locator('#timeline')).toHaveValue(String(stage), { timeout: 7000 });
       await expect(page.locator('#stages .stage.selected')).toHaveCount(1);
     }
     await expect(page.getByRole('button', { name: 'Play journey', exact: true })).toBeVisible({

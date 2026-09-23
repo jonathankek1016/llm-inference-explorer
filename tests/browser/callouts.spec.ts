@@ -83,7 +83,7 @@ test('one canonical card follows Start, Next, Previous, Auto and restart with au
   await page.locator('#previous').click();
   await expect(guided(page)).toContainText('1 / 18');
   await page.getByLabel('Journey mode', { exact: true }).selectOption('AUTO');
-  await page.clock.runFor(2800);
+  await page.clock.runFor(6200);
   await expect(guided(page)).toContainText('2 / 18');
   await page.locator('#replay').click();
   await expect(guided(page)).toHaveCount(1);

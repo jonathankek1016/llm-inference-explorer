@@ -22,7 +22,8 @@ test('full-window world retains framing and grid preference without changing the
   expect(original.canvas).toEqual({ x: 0, y: 0, ...page.viewportSize() });
   expect(original.headerBorder).toBe('0px');
   await page.locator('#timeline').fill('3');
-  await page.getByLabel('Follow journey', { exact: true }).uncheck();
+  await page.mouse.move(12, 400);
+  await page.mouse.wheel(0, 120);
   const withGrid = await canvas.screenshot();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
@@ -49,16 +50,16 @@ test('full-window world retains framing and grid preference without changing the
   await page.mouse.down();
   await page.mouse.move(24, 460, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByLabel('Follow journey', { exact: true })).toBeChecked();
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'TRACKING');
   const orbited = await canvas.screenshot();
   // Stay on exposed canvas: projected labels can cover the old centre point.
   await page.mouse.move(12, 500);
   await page.mouse.down({ button: 'right' });
   await page.mouse.move(24, 560, { steps: 8 });
   await page.mouse.up({ button: 'right' });
-  await expect(page.getByLabel('Follow journey', { exact: true })).not.toBeChecked();
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
   expect(Buffer.compare(orbited, await canvas.screenshot())).not.toBe(0);
-  await page.getByRole('button', { name: 'Fit scene', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset camera', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Show ground grid', { exact: true })).toBeChecked();

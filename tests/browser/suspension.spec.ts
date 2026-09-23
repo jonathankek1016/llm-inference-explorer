@@ -61,8 +61,8 @@ for (const close of ['X', 'outside', 'Escape', 'save', 'Cancel'] as const) {
     }
     await expect(page.locator('#settings-dialog')).not.toBeVisible();
     await advanceState(page, true);
-    // Neither a restart (2600ms remaining) nor suspended wall time (already due).
-    await page.clock.runFor(1300);
+    // Neither a restart (6000ms remaining) nor suspended wall time (already due).
+    await page.clock.runFor(4700);
     await expect(page.locator('#timeline')).toHaveValue('0');
     await page.clock.runFor(400);
     await expect(page.locator('#timeline')).toHaveValue('1');
@@ -94,10 +94,10 @@ for (const blocker of ['detached', 'paused'] as const) {
     );
     await advanceState(page, false);
     if (blocker === 'detached') {
-      await expect(page.getByRole('button', { name: 'Play journey', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Pause journey', exact: true })).toBeEnabled();
       await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
     } else await page.getByRole('button', { name: 'Play journey', exact: true }).click();
-    await page.clock.runFor(1100);
+    await page.clock.runFor(4500);
     await expect(page.locator('#timeline')).toHaveValue('1');
   });
 }
@@ -219,6 +219,6 @@ test('an active Live stream continues receiving and completes while Settings sus
   await expect(page.locator('#timeline')).toHaveValue('0');
   await page.keyboard.press('Escape');
   await advanceState(page, true);
-  await page.clock.runFor(2200);
+  await page.clock.runFor(5600);
   await expect(page.locator('#timeline')).toHaveValue('1');
 });

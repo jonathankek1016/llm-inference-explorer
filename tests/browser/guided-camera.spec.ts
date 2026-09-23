@@ -181,7 +181,7 @@ test('Auto follows official subjects, orbit stays attached, and only Resume reco
   await prepare(page);
   await page.getByLabel('Journey mode', { exact: true }).selectOption('AUTO');
   await orbit(page);
-  await page.clock.runFor(2700);
+  await page.clock.runFor(6100);
   expect((await read(page)).subject).toBe('router');
   await expect(page.locator('#timeline')).toHaveValue('1');
   await expect(page.locator('.playback')).toHaveAttribute('data-advancing', 'true');
@@ -190,12 +190,12 @@ test('Auto follows official subjects, orbit stays attached, and only Resume reco
   await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
   await expect(page.locator('#timeline')).toHaveValue('1');
   await expect(page.getByLabel('Journey mode', { exact: true })).toHaveValue('AUTO');
-  await expect(page.getByRole('button', { name: 'Play journey', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Pause journey', exact: true })).toBeEnabled();
   await page.clock.runFor(3000);
   await expect(page.locator('#timeline')).toHaveValue('1');
   await resume(page);
   await expect(page.locator('#inspector-header h2')).toHaveText('Wi-Fi & router');
-  await page.clock.runFor(2700);
+  await page.clock.runFor(6100);
   await expect(page.locator('#timeline')).toHaveValue('2');
   expect((await read(page)).subject).toBe('internet');
 });
@@ -214,7 +214,7 @@ test('fresh free exploration does not activate guidance; reduced motion focuses 
   await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'false');
   await page.getByRole('button', { name: 'Block', exact: true }).click();
   await expect(page.locator('#scene-title')).toHaveText('Transformer block');
-  await page.getByRole('button', { name: 'Play journey', exact: true }).click();
+  await page.locator('#start-tour').click();
   await expect(page.locator('#scene-title')).toHaveText('The journey of an AI request');
   await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
   await prepare(page);
@@ -234,7 +234,8 @@ test('Resume remains visible and usable on tablet and mobile in both themes', as
       [360, 640],
     ]) {
       await page.setViewportSize({ width, height });
-      await page.getByLabel('Follow journey', { exact: true }).uncheck();
+      await page.mouse.move(12, 400);
+      await page.mouse.wheel(0, 120);
       const button = page.getByRole('button', { name: 'Resume focus', exact: true });
       await expect(button).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);

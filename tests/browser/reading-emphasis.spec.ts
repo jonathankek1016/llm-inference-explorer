@@ -73,7 +73,7 @@ test('current-subject scroll holds remaining Auto time without changing stage, a
   expect(await camera(page)).toEqual(before);
   await page.clock.runFor(1100);
   await hold(page, false);
-  await page.clock.runFor(1300);
+  await page.clock.runFor(4700);
   await expect(page.locator('#timeline')).toHaveValue('0');
   await page.clock.runFor(500);
   await expect(page.locator('#timeline')).toHaveValue('1');
@@ -176,8 +176,7 @@ test('Manual/inactive reading never starts Auto; closure and new stage clear sta
   await expect(page.locator('#timeline')).toHaveValue('0');
   await tracking(page);
   await auto(page);
-  // Mode switching intentionally reissues the existing guided focus. Let that
-  // finish before measuring panel-only changes.
+  // Mode switching changes only progression; let any remaining orbit damping settle.
   await page.clock.runFor(300);
   await wheel(page);
   const before = await camera(page);
@@ -327,6 +326,6 @@ test('an active Live stream continues while current-subject Reading Hold suspend
   await expect(page.locator('#timeline')).toHaveValue('0');
   await page.clock.runFor(3200);
   await hold(page, false);
-  await page.clock.runFor(2200);
+  await page.clock.runFor(5600);
   await expect(page.locator('#timeline')).toHaveValue('1');
 });

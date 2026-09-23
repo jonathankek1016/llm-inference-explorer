@@ -120,7 +120,7 @@ test('live calibration edits zoom, anchor, composition and regions; Capture/Rese
   expect((await read(page)).composition[0]).toBeCloseTo(0, 1); // Composition settles within 0.01 CSS px.
   await expect(panel(page).getByLabel('Teaching duration (ms)')).toHaveValue('8200');
   await panel(page).getByRole('button', { name: 'Reset duration' }).click();
-  await expect(panel(page).getByLabel('Teaching duration (ms)')).toHaveValue('2600');
+  await expect(panel(page).getByLabel('Teaching duration (ms)')).toHaveValue('6000');
 });
 
 test('scene-entry shot can capture an orbit, while subsequent same-scene stages preserve the user angle', async ({

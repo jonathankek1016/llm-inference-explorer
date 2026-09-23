@@ -71,12 +71,15 @@ test('duration falls back to the trace, distinguishes routes and repeated stages
   assert.notEqual(key, framingStageKey(decode[1], false));
   assert.notEqual(key, framingStageKey(decode[0], true));
   const drafts: FramingRegistry = { stages: { [key]: { teachingDurationMs: 8400 } } };
-  assert.equal(teachingDuration(decode[0], false), 2600);
+  assert.equal(teachingDuration(decode[0], false), 5000);
   assert.equal(teachingDuration(decode[0], false, drafts), 8400);
-  assert.equal(teachingDuration(decode[1], false, drafts), 2600);
+  assert.equal(teachingDuration(decode[1], false, drafts), 5000);
   delete drafts.stages![key];
-  assert.equal(teachingDuration(decode[0], false, drafts), 2600);
-  assert.equal(teachingDuration(decode[0], false, { defaults: { teachingDurationMs: 4000 } }), 4000);
+  assert.equal(teachingDuration(decode[0], false, drafts), 5000);
+  assert.equal(
+    teachingDuration(decode[0], false, { subjects: { model: { decode: { teachingDurationMs: 4000 } } } }),
+    4000,
+  );
 });
 
 test('capture exports deterministic registry JSON, rounding poses and excluding entry-only orientation from stages', () => {

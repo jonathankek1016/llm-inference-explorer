@@ -14,7 +14,7 @@ export interface JourneyControl {
 export type JourneyAction =
   | { type: 'SET_MODE'; mode: JourneyMode }
   | { type: 'SET_SUSPENSION'; reason: JourneySuspension; suspended: boolean }
-  | { type: 'START' | 'NAVIGATE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
+  | { type: 'START' | 'STOP' | 'NAVIGATE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
 
 export function createJourneyControl(): JourneyControl {
   // Preserve the existing ready-to-play replay, without starting a timer on load.
@@ -53,6 +53,8 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
       };
     case 'NAVIGATE':
       return { ...state, active: true };
+    case 'STOP':
+      return { ...state, active: false, playbackRequested: false, guidedFocus: 'TRACKING' };
     case 'PLAY':
       return { ...state, active: true, playbackRequested: state.journeyMode === 'AUTO' };
     case 'PAUSE':
@@ -60,10 +62,22 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
     case 'DETACH':
       return state.active ? { ...state, guidedFocus: 'DETACHED' } : state;
     case 'RESUME':
-      return state.active
-        ? { ...state, guidedFocus: 'TRACKING', playbackRequested: state.journeyMode === 'AUTO' }
-        : state;
+      return state.active ? { ...state, guidedFocus: 'TRACKING' } : state;
   }
+}
+
+/** Intent and temporary blockers are reported separately, just as they are stored. */
+export function journeyStatus(state: JourneyControl): string {
+  if (!state.active) return 'Free exploration';
+  const mode =
+    state.journeyMode === 'MANUAL' ? 'Manual' : state.playbackRequested ? 'Auto playing' : 'Auto paused';
+  const reasons = [
+    ...(state.guidedFocus === 'DETACHED' ? ['Exploring'] : []),
+    ...(state.suspensions.includes('SETTINGS') ? ['Settings open'] : []),
+    ...(state.suspensions.includes('READING_HOLD') ? ['Reading'] : []),
+  ];
+  if (reasons.length) return `${mode === 'Auto playing' ? 'Auto held' : mode} · ${reasons.join(' · ')}`;
+  return `${mode} · Guided`;
 }
 
 export function journeySuspended(state: JourneyControl): boolean {

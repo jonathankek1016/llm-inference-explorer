@@ -15,6 +15,7 @@ import {
   transitionJourney,
   journeyAdvancing,
   journeySuspended,
+  journeyStatus,
   advanceJourneyTime,
 } from './core.ts';
 import type { Message, JourneyAction, JourneyMode } from './core.ts';
@@ -196,12 +197,12 @@ function setPlaying(value: boolean) {
 }
 function updateJourney(action: JourneyAction) {
   const starting = !journey.active;
-  const wasSuspended = journeySuspended(journey);
+  const wasAdvancing = journeyAdvancing(journey);
   journey = transitionJourney(journey, action);
   // Exclude time across suspension boundaries even if no RAF ran in between.
-  if (wasSuspended !== journeySuspended(journey)) animationLast = performance.now();
+  if (wasAdvancing !== journeyAdvancing(journey)) animationLast = performance.now();
   renderJourneyControl();
-  if (action.type === 'PLAY' || (action.type === 'SET_MODE' && action.mode === 'AUTO' && journey.active)) {
+  if (action.type === 'PLAY' && starting && journey.active) {
     const previousScene = state.scene;
     if (starting) selectConcept(frame.event.conceptId, { pause: false });
     focusJourneySubject(previousScene !== state.scene);
@@ -232,17 +233,14 @@ function renderJourneyControl() {
     atlas.playing = advancing;
     atlas.dirty = true;
   }
-  $('play').innerHTML = icon(advancing ? 'pause' : 'play');
-  $('play').setAttribute('aria-label', advancing ? 'Pause journey' : 'Play journey');
-  $('play').toggleAttribute(
-    'disabled',
-    journey.journeyMode === 'MANUAL' || journey.guidedFocus === 'DETACHED',
-  );
+  $('play').innerHTML = icon(journey.playbackRequested ? 'pause' : 'play');
+  $('play').setAttribute('aria-label', journey.playbackRequested ? 'Pause journey' : 'Play journey');
+  $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL');
   $<HTMLSelectElement>('journey-mode').value = journey.journeyMode;
-  $<HTMLInputElement>('follow').checked = journey.guidedFocus === 'TRACKING';
-  $('follow').closest<HTMLElement>('label')!.hidden = !journey.active || journey.guidedFocus === 'DETACHED';
+  $('start-tour').hidden = journey.active;
+  $('stop-tour').hidden = !journey.active;
   $('resume-focus').hidden = !journey.active || journey.guidedFocus !== 'DETACHED';
-  $('guidance-status').hidden = journey.active;
+  $('guidance-status').textContent = journeyStatus(journey);
   const playback = document.querySelector<HTMLElement>('.playback')!;
   playback.dataset.journeyMode = journey.journeyMode;
   playback.dataset.guidedFocus = journey.guidedFocus;
@@ -286,9 +284,7 @@ function resumeGuidedFocus() {
   focusJourneySubject(previousScene !== state.scene);
 }
 function navigateStage(position: number) {
-  // An explicit step retains V2's pause while attached. Detached stepping must
-  // not discard Auto intent: Resume still returns to the newly chosen stage.
-  if (journey.guidedFocus === 'TRACKING') setPlaying(false);
+  // A new stage gets its own teaching time; playback intent and attachment survive.
   updateJourney({ type: 'NAVIGATE' });
   seek(position);
 }
@@ -777,13 +773,17 @@ document.addEventListener('click', (e) => {
       $<HTMLDialogElement>('about-dialog').showModal();
       break;
     case 'play':
-      if (journey.journeyMode === 'MANUAL' || journey.guidedFocus === 'DETACHED') break;
-      if (state.position === trace.length - 1) seek(0);
-      setPlaying(!journeyAdvancing(journey));
+      if (!journey.active || journey.journeyMode === 'MANUAL') break;
+      if (stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts)) stageElapsed = 0;
+      setPlaying(!journey.playbackRequested);
       break;
     case 'start-tour':
       updateJourney({ type: 'START' });
       seek(0);
+      break;
+    case 'stop-tour':
+      atlas?.cancelFocus();
+      updateJourney({ type: 'STOP' });
       break;
     case 'previous':
       navigateStage(state.position - 1);
@@ -799,7 +799,6 @@ document.addEventListener('click', (e) => {
       resumeGuidedFocus();
       break;
     case 'reset-camera':
-    case 'fit-scene':
       detachGuidedFocus();
       atlas?.reset();
       break;
@@ -888,9 +887,6 @@ document.addEventListener('change', (e) => {
     cancelRequest();
     mode = el.value as 'demo' | 'live';
     updateMode();
-  }
-  if (el.id === 'follow') {
-    if (!el.checked) detachGuidedFocus();
   }
 });
 $('chat-form').addEventListener('submit', (e) => {

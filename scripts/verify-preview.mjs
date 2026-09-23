@@ -50,7 +50,7 @@ const intervalCount = async () =>
     return window.__drawCalls - start;
   });
 const idleDrawCalls = await intervalCount();
-await page.getByRole('button', { name: 'Play journey', exact: true }).click();
+await page.getByRole('button', { name: 'Start journey', exact: true }).click();
 const playbackDrawCalls = await intervalCount();
 await page.getByRole('button', { name: 'Pause journey', exact: true }).click();
 const rendering = await page.evaluate(() => {

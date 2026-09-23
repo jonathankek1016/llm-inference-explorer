@@ -963,7 +963,7 @@ svg {
 }
 .playback-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.75rem;
   padding-bottom: 0.875rem;
@@ -986,25 +986,23 @@ svg {
 .playback-top .evidence {
   font-size: 0.5rem;
   letter-spacing: 1.25px;
+  white-space: nowrap;
 }
 #playback-position {
   font: 0.5625rem monospace;
   color: var(--muted);
-}
-.follow {
-  margin-left: auto;
-  font-size: 0.5625rem;
-  color: var(--muted);
-  display: flex;
-  gap: 0.3125rem;
-  align-items: center;
   white-space: nowrap;
 }
-.follow input {
-  width: 0.625rem;
-  height: 0.625rem;
-  accent-color: var(--accent);
-  margin: 0;
+.guidance-status {
+  font-size: 0.5625rem;
+  color: var(--muted);
+  max-width: 65%;
+  text-align: right;
+}
+#start-tour,
+#stop-tour {
+  font-size: 0.625rem;
+  white-space: nowrap;
 }
 .resume-focus {
   margin-left: auto;
@@ -1014,6 +1012,11 @@ svg {
   color: var(--accent);
   font-size: 0.625rem;
   white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .playback-top {
+    flex-wrap: wrap;
+  }
 }
 .playback-controls {
   display: flex;
@@ -1049,6 +1052,17 @@ svg {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.timeline-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4375rem;
+}
+.timeline-heading label {
+  min-width: 0;
+  margin-bottom: 0;
 }
 .timeline-wrap input {
   width: 100%;
@@ -1814,7 +1828,7 @@ dialog form > input:not([type='checkbox']) {
     padding: 0.8125rem;
     min-width: 18.75rem;
   }
-  .follow {
+  .guidance-status {
     font-size: 0.5rem;
   }
   .playback-controls {
@@ -2077,7 +2091,7 @@ dialog form > input:not([type='checkbox']) {
   .timeline-wrap {
     margin: 0 0.4375rem;
   }
-  .follow {
+  .guidance-status {
     font-size: 0.5rem;
   }
   .play-button {

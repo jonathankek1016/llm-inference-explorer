@@ -35,10 +35,38 @@ export type ResolvedFraming = SceneEntryProfile & {
 export const canonicalOrientation: Point3 = [11, 9.7, 14.7];
 /** Paste captured stages / sceneEntries here. Omitted fields inherit the layers below. */
 export const framingRegistry: FramingRegistry = {
-  defaults: { guidedZoom: 1.65, anchorOffset: [0, 0.8, 0], preferredCalloutRegion: 'auto' },
+  // Six seconds for a short explanation; conceptual transformations get 8–10s.
+  // These are teaching times, never estimates of network or inference latency.
+  defaults: {
+    guidedZoom: 1.65,
+    anchorOffset: [0, 0.8, 0],
+    preferredCalloutRegion: 'auto',
+    teachingDurationMs: 6000,
+  },
   subjects: {
     world: { datacenter: { anchorOffset: [0, 1.4, 0], guidedZoom: 1.35 } },
-    model: { block: { anchorOffset: [0, 2, 0], guidedZoom: 1.35 } },
+    compute: { gpu: { teachingDurationMs: 8000 } },
+    model: {
+      context: { teachingDurationMs: 8000 },
+      tokenizer: { teachingDurationMs: 8000 },
+      embedding: { teachingDurationMs: 8000 },
+      prefill: { teachingDurationMs: 8000 },
+      block: { anchorOffset: [0, 2, 0], guidedZoom: 1.35, teachingDurationMs: 10000 },
+      cache: { teachingDurationMs: 10000 },
+      sampling: { teachingDurationMs: 10000 },
+      decode: { teachingDurationMs: 5000 },
+    },
+    tools: {
+      intent: { teachingDurationMs: 8000 },
+      host: { teachingDurationMs: 8000 },
+      mcp: { teachingDurationMs: 10000 },
+    },
+    vision: { patches: { teachingDurationMs: 8000 }, fusion: { teachingDurationMs: 10000 } },
+    diffusion: {
+      conditioning: { teachingDurationMs: 8000 },
+      noise: { teachingDurationMs: 8000 },
+      denoise: { teachingDurationMs: 8000 },
+    },
   },
 };
 
