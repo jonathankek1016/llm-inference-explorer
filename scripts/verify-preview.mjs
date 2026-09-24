@@ -117,6 +117,9 @@ await page.setViewportSize({ width: 1440, height: 960 });
 await page.getByRole('button', { name: 'Settings' }).click();
 await page.screenshot({ path: 'artifacts/final-settings.png' });
 await page.keyboard.press('Escape');
+// Forward Journey-row jumps above now intentionally restore guidance. Establish
+// a fresh exploration detour before checking request/attachment independence.
+await page.getByRole('button', { name: 'Hardware', exact: true }).click();
 await page.getByRole('tab', { name: 'Chat', exact: true }).click();
 await page.getByRole('textbox', { name: 'Your message' }).fill('Why is the sky blue?');
 await page.getByRole('button', { name: 'Run demo', exact: true }).click();

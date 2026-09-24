@@ -31,6 +31,7 @@ import { framingStageKey, resolveFramingProfile, teachingDuration } from './fram
 import type { FramingRegistry } from './framing.ts';
 import type { CalibrationPanel } from './calibration.ts';
 import { ReadingHold, observeReading } from './reading-hold.ts';
+import { navigationFocus, readNavigationPreferences } from './navigation.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -67,6 +68,7 @@ const state = {
   dark: read<string>('atlas-theme', 'light') === 'dark',
 };
 let journey = createJourneyControl();
+let navigationPreferences = readNavigationPreferences(read<unknown>('atlas-navigation', null));
 let exploratoryCallouts: ExplorationCallout[] = [];
 let framingDrafts: FramingRegistry = {};
 let entryFraming = false;
@@ -265,8 +267,7 @@ function renderCallouts() {
       renderCallouts();
     },
     (conceptId) => {
-      if (journey.active && conceptId !== frame.event.conceptId) detachGuidedFocus();
-      selectConcept(conceptId, { pause: false, keepScene: true });
+      selectConcept(conceptId, { pause: journey.active, keepScene: true });
       showPanel('inspector');
     },
   );
@@ -283,10 +284,19 @@ function resumeGuidedFocus() {
   updateJourney({ type: 'RESUME' });
   focusJourneySubject(previousScene !== state.scene);
 }
-function navigateStage(position: number) {
+function navigateStage(position: number, kind: 'step' | 'row' = 'step') {
+  const destination = frameAt(trace, position).index;
+  // Selecting the current row is not a timer restart or a recovery command.
+  if (kind === 'row' && journey.active && destination === state.position) return;
+  const guidedFocus = navigationFocus(
+    kind === 'row' ? { kind, from: state.position, to: destination } : { kind },
+    journey.guidedFocus,
+    navigationPreferences,
+  );
+  if (guidedFocus === 'DETACHED') atlas?.cancelFocus();
   // A new stage gets its own teaching time; playback intent and attachment survive.
-  updateJourney({ type: 'NAVIGATE' });
-  seek(position);
+  updateJourney({ type: 'NAVIGATE', guidedFocus });
+  seek(destination, { preserveView: kind === 'row' && guidedFocus === 'DETACHED' });
 }
 function showPanel(which: 'journey' | 'inspector', show = true) {
   $(`${which}-panel`).classList.toggle('collapsed', !show);
@@ -349,9 +359,15 @@ function changeScene(scene: SceneId) {
 function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; keepScene?: boolean } = {}) {
   if (!concepts[id]) return;
   // Exploration during a started journey cannot replace its official frame.
-  // Direction-dependent row policies and other navigation settings are later work.
   if (journey.active && options.pause !== false) {
-    detachGuidedFocus();
+    if (
+      navigationFocus(
+        { kind: 'concept', subject: frame.event.conceptId, destination: id },
+        journey.guidedFocus,
+        navigationPreferences,
+      ) === 'DETACHED'
+    )
+      detachGuidedFocus();
     selectConcept(id, { ...options, pause: false });
     return;
   }
@@ -390,7 +406,11 @@ function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; 
   renderStages();
 }
 function goScene(id: SceneId) {
-  if (journey.active) detachGuidedFocus();
+  if (
+    journey.active &&
+    navigationFocus({ kind: 'scene' }, journey.guidedFocus, navigationPreferences) === 'DETACHED'
+  )
+    detachGuidedFocus();
   else setPlaying(false);
   changeScene(id);
   selectConcept(id === 'compute' && state.local ? 'gpu' : sceneEntries[id], {
@@ -432,17 +452,31 @@ function renderStages() {
       list.scrollTop = Math.max(0, top - 45);
   }
 }
-function seek(position: number) {
+function seek(position: number, options: { preserveView?: boolean; canonical?: boolean } = {}) {
   const previousScene = state.scene;
+  const previousOfficialScene = frame.scene;
   frame = frameAt(trace, position);
   readingHold.sync(readingContext(), performance.now());
   entryFraming = false;
   state.position = frame.index;
   stageElapsed = 0;
+  animationLast = performance.now();
   atlas?.setProgress(frame.decode, frame.refinement);
-  selectConcept(frame.event.conceptId, { pause: false });
-  focusJourneySubject(previousScene !== state.scene);
+  if (options.preserveView) {
+    renderStages();
+    renderInspectorContext();
+  } else {
+    selectConcept(frame.event.conceptId, { pause: false });
+    focusJourneySubject(
+      options.canonical || previousScene !== state.scene || previousOfficialScene !== frame.scene,
+    );
+  }
   renderPlayback();
+}
+function restartJourney() {
+  readingHold.clear();
+  updateJourney({ type: 'START' });
+  seek(0, { canonical: true });
 }
 function renderPlayback() {
   renderCallouts();
@@ -654,6 +688,8 @@ async function send() {
 function chooseScenario(id: string) {
   cancelRequest();
   setPlaying(false);
+  readingHold.clear();
+  if (journey.active) updateJourney({ type: 'RESUME' });
   state.scenario = id;
   $<HTMLSelectElement>('scenario').value = id;
   trace = makeTrace(id, state.local);
@@ -667,7 +703,7 @@ function chooseScenario(id: string) {
     $<HTMLSelectElement>('mode').value = mode;
     updateMode();
   }
-  seek(0);
+  seek(0, { canonical: true });
 }
 function updateMode() {
   $('mode-note').textContent =
@@ -679,6 +715,8 @@ function updateMode() {
   renderReceivedData();
 }
 function openSettings() {
+  $<HTMLSelectElement>('past-stage-jump').value = navigationPreferences.past;
+  $<HTMLSelectElement>('future-stage-jump').value = navigationPreferences.future;
   $<HTMLInputElement>('provider-url').value = config.url;
   $<HTMLInputElement>('provider-model').value = config.model;
   $<HTMLInputElement>('provider-key').value = config.key;
@@ -711,7 +749,7 @@ document.addEventListener('click', (e) => {
   if (b.dataset.scene) goScene(b.dataset.scene as SceneId);
   if (b.dataset.concept) selectConcept(b.dataset.concept);
   if (b.dataset.stage) {
-    navigateStage(Number(b.dataset.stage));
+    navigateStage(Number(b.dataset.stage), 'row');
   }
   if (b.dataset.searchConcept) {
     $<HTMLDialogElement>('search-dialog').close();
@@ -778,8 +816,7 @@ document.addEventListener('click', (e) => {
       setPlaying(!journey.playbackRequested);
       break;
     case 'start-tour':
-      updateJourney({ type: 'START' });
-      seek(0);
+      restartJourney();
       break;
     case 'stop-tour':
       atlas?.cancelFocus();
@@ -792,8 +829,7 @@ document.addEventListener('click', (e) => {
       navigateStage(state.position + 1);
       break;
     case 'replay':
-      updateJourney({ type: 'START' });
-      seek(0);
+      restartJourney();
       break;
     case 'resume-focus':
       resumeGuidedFocus();
@@ -869,6 +905,13 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const el = e.target as HTMLInputElement;
+  if (el.id === 'past-stage-jump' || el.id === 'future-stage-jump') {
+    navigationPreferences = readNavigationPreferences({
+      ...navigationPreferences,
+      [el.id === 'past-stage-jump' ? 'past' : 'future']: el.value,
+    });
+    save('atlas-navigation', navigationPreferences);
+  }
   if (el.name === 'palette' && (el.value === 'custom' || palettes.some((p) => p.id === el.value))) {
     appearance.palette = el.value;
     applyAppearance();
@@ -1085,10 +1128,9 @@ import('./scene.ts')
       atlas = new Scene(
         $('viewport'),
         (id) => {
-          if (journey.active && id !== frame.event.conceptId) detachGuidedFocus();
           // A scene-object inspection changes exploration selection, not the
           // official trace position, scenario, or accumulated teaching time.
-          selectConcept(id, { pause: !journey.active, keepScene: id === 'cache' && state.scene === 'block' });
+          selectConcept(id, { keepScene: id === 'cache' && state.scene === 'block' });
           if (!journey.active || id !== frame.event.conceptId) {
             exploratoryCallouts = openCallout(exploratoryCallouts, id, state.scene);
             renderCallouts();

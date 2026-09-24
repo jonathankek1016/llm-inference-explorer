@@ -22,6 +22,10 @@ export class ReadingHold {
   has(surface: ReadingSurface) {
     return this.leases.has(surface);
   }
+  clear() {
+    this.leases.clear();
+    this.publish();
+  }
   activity(surface: ReadingSurface, context: ReadingContext, now: number) {
     this.sync(context, now);
     if (this.eligible(surface, context)) this.leases.set(surface, now + readingIdleMs);
