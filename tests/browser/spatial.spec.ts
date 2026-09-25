@@ -33,6 +33,9 @@ test('full-window world retains framing and grid preference without changing the
   expect((await layout()).panels).toEqual(original.panels);
   await expect(page.locator('#timeline')).toHaveValue('3');
   await expect(page.locator('#inspector-header h2')).toHaveText('Data centre');
+  // Guided framing can put the laptop beneath the Journey panel. Expose the
+  // actual mesh before raycasting; collapsing the panel must not move it.
+  await page.locator('#collapse-journey').click();
   const device = (await page.locator('.object-label[data-concept="device"]').boundingBox())!;
   // Hit the laptop mesh below its label, exercising the full-canvas raycast.
   await page.mouse.click(device.x + device.width / 2, device.y + device.height + 35);

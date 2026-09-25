@@ -70,6 +70,17 @@ const state = {
 let journey = createJourneyControl();
 let navigationPreferences = readNavigationPreferences(read<unknown>('atlas-navigation', null));
 let exploratoryCallouts: ExplorationCallout[] = [];
+const explorationViews = new Map<
+  string,
+  {
+    camera?: ReturnType<AtlasScene['captureView']>;
+    selected: string;
+    inspector: string;
+    scroll: number;
+    details: boolean[];
+  }
+>();
+const explorationViewKey = (scene: SceneId) => `${state.local ? 'local' : 'cloud'}:${scene}`;
 let framingDrafts: FramingRegistry = {};
 let entryFraming = false;
 let calibration: CalibrationPanel | undefined;
@@ -278,6 +289,7 @@ function detachGuidedFocus() {
 }
 function resumeGuidedFocus() {
   if (!journey.active) return;
+  rememberExplorationView();
   // Resolve from the current frame, never from the selection at detachment time.
   const previousScene = state.scene;
   selectConcept(frame.event.conceptId, { pause: false });
@@ -294,6 +306,7 @@ function navigateStage(position: number, kind: 'step' | 'row' = 'step') {
     navigationPreferences,
   );
   if (guidedFocus === 'DETACHED') atlas?.cancelFocus();
+  else rememberExplorationView();
   // A new stage gets its own teaching time; playback intent and attachment survive.
   updateJourney({ type: 'NAVIGATE', guidedFocus });
   seek(destination, { preserveView: kind === 'row' && guidedFocus === 'DETACHED' });
@@ -317,7 +330,19 @@ function setTab(tab: string) {
   $('chat-tab').setAttribute('aria-selected', String(tab === 'chat'));
   showPanel('journey');
 }
-function changeScene(scene: SceneId) {
+function rememberExplorationView() {
+  if (!journey.active || journey.guidedFocus === 'DETACHED') {
+    explorationViews.set(explorationViewKey(state.scene), {
+      camera: atlas?.captureView(),
+      selected: state.selected,
+      inspector: state.inspector,
+      scroll: $('inspector-body').scrollTop,
+      details: [...$('inspector-body').querySelectorAll('details')].map((detail) => detail.open),
+    });
+  }
+}
+function changeScene(scene: SceneId, remember = true) {
+  if (remember && scene !== state.scene) rememberExplorationView();
   state.scene = scene;
   atlas?.setScene(scene, !journey.active);
   atlas?.resize();
@@ -397,22 +422,37 @@ function selectConcept(id: string, options: { pause?: boolean; focus?: boolean; 
       renderPlayback();
     }
   }
+  if (!options.keepScene) changeScene(concepts[id].scene);
   state.selected = id;
   readingHold.sync(readingContext(), performance.now());
-  if (!options.keepScene) changeScene(concepts[id].scene);
   atlas?.setSelected(id);
   if (options.focus) atlas?.focus();
   renderInspector();
   renderStages();
 }
 function goScene(id: SceneId) {
+  const wasTracking = journey.active && journey.guidedFocus === 'TRACKING';
   if (
     journey.active &&
     navigationFocus({ kind: 'scene' }, journey.guidedFocus, navigationPreferences) === 'DETACHED'
   )
     detachGuidedFocus();
   else setPlaying(false);
-  changeScene(id);
+  if (id === state.scene) return;
+  changeScene(id, !wasTracking);
+  const remembered = explorationViews.get(explorationViewKey(id));
+  if (remembered) {
+    state.inspector = remembered.inspector;
+    selectConcept(remembered.selected, { keepScene: true, pause: false });
+    $('inspector-body')
+      .querySelectorAll('details')
+      .forEach((detail, index) => {
+        detail.open = remembered.details[index] ?? false;
+      });
+    $('inspector-body').scrollTop = remembered.scroll;
+    if (remembered.camera) atlas?.restoreView(remembered.camera);
+    return;
+  }
   selectConcept(id === 'compute' && state.local ? 'gpu' : sceneEntries[id], {
     keepScene: true,
     pause: !journey.active,
@@ -474,6 +514,7 @@ function seek(position: number, options: { preserveView?: boolean; canonical?: b
   renderPlayback();
 }
 function restartJourney() {
+  rememberExplorationView();
   readingHold.clear();
   updateJourney({ type: 'START' });
   seek(0, { canonical: true });

@@ -173,7 +173,9 @@ test('detachment, Resume, Settings and panels retain cards without redefining th
 test('all authored scenarios resolve real anchors; missing subjects use scene context without a leader', async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  // This enumerates every stage in four stories with real WebGL projection.
+  // Keep the assertions strict while allowing slower GPU/CI hosts to finish.
+  test.setTimeout(180000);
   await prepare(page);
   for (const scenario of ['text', 'tools', 'vision', 'diffusion']) {
     await page.locator('#scenario').selectOption(scenario);

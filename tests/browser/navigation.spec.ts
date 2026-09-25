@@ -44,6 +44,60 @@ const camera = (page: Page) =>
     };
   });
 const focus = (page: Page) => page.evaluate(() => (window as any).__navigationFocus);
+
+for (const started of [false, true])
+  test(`remembered exploration views restore camera and Inspector; guided framing stays authoritative (${started ? 'detached' : 'inactive'})`, async ({
+    page,
+  }) => {
+    await prepare(page, 'MANUAL', started);
+    await page.locator('#scene-switcher [data-scene="compute"]').click();
+    await object(page, 'gpu');
+    await page.locator('#learn-tab').click();
+    await page.locator('#inspector-body details summary').click();
+    await page.locator('#inspector-body').evaluate((element) => {
+      element.scrollTop = 100;
+    });
+    await page.mouse.move(12, 380);
+    await page.mouse.down();
+    await page.mouse.move(65, 450, { steps: 8 });
+    await page.mouse.up();
+    await page.mouse.wheel(0, -120);
+    await settle(page);
+    const before = await camera(page);
+    const scroll = await page.locator('#inspector-body').evaluate((element) => element.scrollTop);
+    await page.locator('#scene-switcher [data-scene="model"]').click();
+    await page.locator('#sources-tab').click();
+    await page.locator('#scene-switcher [data-scene="compute"]').click();
+    await settle(page);
+    const restored = await camera(page);
+    expect(restored.zoom).toBeCloseTo(before.zoom, 6);
+    for (const key of ['position', 'target', 'composition'] as const)
+      restored[key].forEach((value: number, index: number) =>
+        expect(value).toBeCloseTo(before[key][index], 4),
+      );
+    await expect(page.locator('#inspector-header h2')).toHaveText('GPU accelerator');
+    await expect(page.locator('#learn-tab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#inspector-body details')).toHaveAttribute('open', '');
+    expect(await page.locator('#inspector-body').evaluate((element) => element.scrollTop)).toBe(scroll);
+    await expect(page.locator('.world-callout[data-role="exploratory"][data-subject="gpu"]')).toHaveCount(1);
+    if (started) {
+      await attachment(page, 'DETACHED');
+      await stage(page, 0);
+      await page.locator('#resume-focus').click();
+    } else {
+      await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'false');
+      await page.locator('#start-tour').click();
+    }
+    await settle(page);
+    await attachment(page, 'TRACKING');
+    expect((await focus(page))[0]).toBe('device');
+    await row(page, 6);
+    await settle(page);
+    expect((await focus(page))[0]).toBe('gpu');
+    expect((await camera(page)).zoom).toBeCloseTo(1.65, 2);
+    await expect(page.locator('#journey-mode')).toHaveValue('MANUAL');
+  });
+
 async function settings(page: Page, past: string, future: string) {
   await page.locator('#settings-open').click();
   await page.getByLabel('Earlier-stage jumps').selectOption(past);

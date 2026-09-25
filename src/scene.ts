@@ -934,6 +934,27 @@ export class AtlasScene {
     this.targetZoom = this.camera.zoom;
     this.compositionTarget.copy(this.composition);
   }
+  /** Session-only exploration pose; authored guided framing remains independent. */
+  captureView() {
+    return {
+      position: this.camera.position.toArray() as Point3,
+      target: this.controls.target.toArray() as Point3,
+      zoom: this.camera.zoom,
+      composition: this.composition.toArray() as [number, number],
+    };
+  }
+  restoreView(view: ReturnType<AtlasScene['captureView']>) {
+    this.cancelFocus();
+    this.camera.position.set(...view.position);
+    this.controls.target.set(...view.target);
+    this.camera.zoom = view.zoom;
+    this.targetZoom = view.zoom;
+    this.composition.set(...view.composition);
+    this.compositionTarget.copy(this.composition);
+    this.applyComposition();
+    this.controls.update();
+    this.dirty = true;
+  }
   setPresentationSuspended(value: boolean) {
     if (this.presentationSuspended === value) return;
     this.presentationSuspended = value;

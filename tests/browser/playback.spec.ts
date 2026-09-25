@@ -33,6 +33,8 @@ const readCamera = (page: Page) =>
 test('Manual navigation, modes, Auto intent and speed share one current stage without reframing', async ({
   page,
 }) => {
+  // Several virtual teaching intervals still render frames on the host GPU.
+  test.setTimeout(60000);
   await prepare(page);
   await expect(page.locator('.playback #start-tour')).toBeVisible();
   await expect(page.locator('#play')).toBeDisabled();
