@@ -1085,6 +1085,12 @@ input[type='range']::-webkit-slider-thumb {
   border: 2px solid var(--panel);
   box-shadow: 0 0 0 1px var(--accent-line);
 }
+#timeline {
+  /* Enlarge the hit area without moving the visible track or nearby controls. */
+  height: 1.25rem;
+  margin-block: -0.53125rem;
+  background: linear-gradient(var(--line), var(--line)) center / 100% 0.1875rem no-repeat;
+}
 #speed {
   font-size: 0.625rem;
   width: 2.6875rem;

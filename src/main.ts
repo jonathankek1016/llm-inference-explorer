@@ -253,13 +253,10 @@ function renderJourneyControl() {
   }
   $('play').innerHTML = icon(journey.playbackRequested ? 'pause' : 'play');
   $('play').setAttribute('aria-label', journey.playbackRequested ? 'Pause journey' : 'Play journey');
-  $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL');
   $<HTMLSelectElement>('journey-mode').value = journey.journeyMode;
   $('start-tour').hidden = journey.active;
-  $('stop-tour').hidden = !journey.active;
   $('resume-focus').hidden = !journey.active || journey.guidedFocus !== 'DETACHED';
   renderReplayAction();
-  $('guidance-status').textContent = journeyStatus(journey);
   const playback = document.querySelector<HTMLElement>('.playback')!;
   playback.dataset.journeyMode = journey.journeyMode;
   playback.dataset.guidedFocus = journey.guidedFocus;
@@ -529,6 +526,11 @@ function renderReplayAction() {
     !journey.playbackRequested &&
     state.position === trace.length - 1 &&
     stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts);
+  // Completion retains guided ownership; it is not the ordinary Stop action.
+  const autoCompleted = journey.journeyMode === 'AUTO' && completed;
+  $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL' || autoCompleted);
+  $('stop-tour').hidden = !journey.active || autoCompleted;
+  $('guidance-status').textContent = autoCompleted ? 'Journey complete' : journeyStatus(journey);
   const replayLabel = completed ? 'Replay from start' : 'Replay journey';
   const replay = $('replay');
   replay.setAttribute('aria-label', replayLabel);
@@ -871,7 +873,7 @@ document.addEventListener('click', (e) => {
       $<HTMLDialogElement>('about-dialog').showModal();
       break;
     case 'play':
-      if (!journey.active || journey.journeyMode === 'MANUAL') break;
+      if ($<HTMLButtonElement>('play').disabled) break;
       if (stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts)) stageElapsed = 0;
       setPlaying(!journey.playbackRequested);
       break;
@@ -941,6 +943,27 @@ document.addEventListener('click', (e) => {
       ($('received-data').parentElement as HTMLDetailsElement).open = true;
       break;
   }
+});
+// Track clicks share the native input/seek path. Leave thumb gestures entirely
+// to the range control so dragging and keyboard accessibility stay native.
+$<HTMLInputElement>('timeline').addEventListener('pointerdown', (event) => {
+  if (!event.isPrimary || event.button !== 0) return;
+  const timeline = event.currentTarget as HTMLInputElement;
+  const bounds = timeline.getBoundingClientRect();
+  const thumb = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.625;
+  const min = Number(timeline.min),
+    max = Number(timeline.max),
+    start = bounds.left + thumb / 2,
+    width = bounds.width - thumb;
+  if (max <= min || width <= 0) return;
+  const currentX = start + ((Number(timeline.value) - min) / (max - min)) * width;
+  if (Math.abs(event.clientX - currentX) <= thumb / 2) return;
+  event.preventDefault();
+  timeline.focus({ preventScroll: true });
+  const position = Math.round(min + Math.max(0, Math.min(1, (event.clientX - start) / width)) * (max - min));
+  if (position === Number(timeline.value)) return;
+  timeline.value = String(position);
+  timeline.dispatchEvent(new Event('input', { bubbles: true }));
 });
 document.addEventListener('input', (e) => {
   const el = e.target as HTMLInputElement;
