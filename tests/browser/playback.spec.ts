@@ -30,6 +30,39 @@ const readCamera = (page: Page) =>
     };
   });
 
+test('completed Auto offers Replay from start without changing restart or final-stage ownership', async ({
+  page,
+}) => {
+  await prepare(page);
+  await page.locator('#start-tour').click();
+  await page.locator('#timeline').fill('17');
+  await expect(page.locator('#replay')).toHaveAttribute('aria-label', 'Replay journey');
+  await page.locator('#play').click();
+  await expect(page.locator('#replay')).not.toContainText('Replay from start');
+  await page.locator('#play').click();
+  await page.clock.runFor(6200);
+  await advancing(page, false);
+  await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'true');
+  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveAttribute(
+    'data-subject',
+    'response',
+  );
+  await expect(page.getByRole('button', { name: 'Replay from start', exact: true })).toBeVisible();
+  await expect(page.locator('#replay')).toHaveText('Replay from start');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.getByRole('button', { name: 'Replay from start', exact: true }).click();
+  await stage(page, 0);
+  await advancing(page, true);
+  await expect(page.locator('#journey-mode')).toHaveValue('AUTO');
+  await expect(page.locator('#replay')).toHaveAttribute('aria-label', 'Replay journey');
+  await page.locator('#timeline').fill('17');
+  await page.clock.runFor(6200);
+  await expect(page.locator('#replay')).toHaveAttribute('aria-label', 'Replay from start');
+  await page.locator('#previous').click();
+  await expect(page.locator('#replay')).toHaveAttribute('aria-label', 'Replay journey');
+});
+
 test('Manual navigation, modes, Auto intent and speed share one current stage without reframing', async ({
   page,
 }) => {

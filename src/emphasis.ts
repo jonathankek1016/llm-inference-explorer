@@ -6,7 +6,7 @@ type Effect = { material: T.Material; owner?: string; amount: { value: number } 
 export class GuidedEmphasis {
   private effects: Effect[] = [];
   private originals = new Map<T.Mesh | T.Line, T.Material | T.Material[]>();
-  private subject?: string;
+  private subjects?: ReadonlySet<string>;
   private levels = new Map<string | undefined, number>();
   prepare(root: T.Object3D) {
     this.clear();
@@ -23,20 +23,21 @@ export class GuidedEmphasis {
         let effect = owners.get(owner);
         if (!effect) {
           const material = original.clone();
-          const amount = { value: this.subject ? (this.levels.get(owner) ?? 0) : 0 };
+          const amount = { value: this.subjects ? (this.levels.get(owner) ?? 0) : 0 };
           material.onBeforeCompile = (shader) => {
             shader.uniforms.guidedSubdue = amount;
             shader.fragmentShader =
               'uniform float guidedSubdue;\n' +
               shader.fragmentShader.replace(
-                '#include <color_fragment>',
-                `#include <color_fragment>
-              float guidedLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(guidedLuma), guidedSubdue * 0.45);
-              diffuseColor.rgb *= 1.0 - guidedSubdue * 0.06;`,
+                '#include <opaque_fragment>',
+                // Work on lit linear RGB: tinted lights must not put the chroma
+                // back. Preserve luminance, alpha, texture detail and shadow shape.
+                `float guidedLuma = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));
+              outgoingLight = mix(outgoingLight, vec3(guidedLuma), guidedSubdue * 0.85);
+              #include <opaque_fragment>`,
               );
           };
-          material.customProgramCacheKey = () => 'atlas-guided-emphasis-v1';
+          material.customProgramCacheKey = () => 'atlas-guided-emphasis-v2';
           effect = { material, owner, amount };
           owners.set(owner, effect);
           this.effects.push(effect);
@@ -46,15 +47,15 @@ export class GuidedEmphasis {
       object.material = Array.isArray(object.material) ? object.material.map(wrap) : wrap(object.material);
     });
   }
-  setSubject(subject?: string) {
-    this.subject = subject;
-    if (!subject) this.levels.clear();
+  setSubjects(subjects?: ReadonlySet<string>) {
+    this.subjects = subjects;
+    if (!subjects) this.levels.clear();
   }
   update(seconds: number, reducedMotion: boolean) {
     let changed = false;
     const fraction = focusEase(seconds, reducedMotion);
     for (const effect of this.effects) {
-      const target = this.subject && effect.owner !== this.subject ? 1 : 0;
+      const target = this.subjects && (!effect.owner || !this.subjects.has(effect.owner)) ? 1 : 0;
       if (effect.amount.value === target) continue;
       const value = effect.amount.value + (target - effect.amount.value) * fraction;
       effect.amount.value = Math.abs(target - value) < 0.001 ? target : value;

@@ -64,6 +64,38 @@ test('independent holds are idempotent and release only their own reason', () =>
   assert.deepEqual(auto.suspensions, []);
 });
 
+test('Appearance owns an independent blocker across modes, intent, Settings and Reading Hold', () => {
+  const active = transitionJourney(createJourneyControl(), { type: 'START' });
+  for (const initial of [
+    createJourneyControl(),
+    active,
+    transitionJourney(active, { type: 'SET_MODE', mode: 'MANUAL' }),
+    transitionJourney(active, { type: 'DETACH' }),
+    transitionJourney(active, { type: 'PAUSE' }),
+  ]) {
+    const opened = transitionJourney(initial, {
+      type: 'SET_SUSPENSION',
+      reason: 'APPEARANCE',
+      suspended: true,
+    });
+    assert.equal(advanceJourneyTime(opened, 3200, 100, 2), 3200);
+    for (const reason of ['SETTINGS', 'READING_HOLD'] as const) {
+      const both = transitionJourney(opened, { type: 'SET_SUSPENSION', reason, suspended: true });
+      const closed = transitionJourney(both, {
+        type: 'SET_SUSPENSION',
+        reason: 'APPEARANCE',
+        suspended: false,
+      });
+      assert.deepEqual(closed, { ...initial, suspensions: [reason] });
+      assert.equal(journeyAdvancing(closed), false);
+    }
+    assert.deepEqual(
+      transitionJourney(opened, { type: 'SET_SUSPENSION', reason: 'APPEARANCE', suspended: false }),
+      initial,
+    );
+  }
+});
+
 test('choosing Auto while inactive does not start a journey, including after Settings closes', () => {
   let state = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode: 'MANUAL' });
   state = transitionJourney(state, { type: 'SET_MODE', mode: 'AUTO' });

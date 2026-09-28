@@ -35,6 +35,99 @@ const start = (page: Page) => page.getByRole('button', { name: 'Start journey', 
 const advanceState = (page: Page, value: boolean) =>
   expect(page.locator('.playback')).toHaveAttribute('data-advancing', String(value));
 
+for (const close of ['X', 'outside', 'Escape'] as const) {
+  test(`Appearance pauses time and camera, releases only its blocker on ${close}`, async ({ page }) => {
+    await prepare(page);
+    await start(page);
+    await page.clock.runFor(1100);
+    await page.locator('#appearance-open').click();
+    const frozen = await read(page);
+    await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'APPEARANCE');
+    await expect(page.locator('#play')).toHaveAttribute('aria-label', 'Pause journey');
+    await advanceState(page, false);
+    await page.clock.fastForward(30000);
+    expect(await read(page)).toEqual(frozen);
+    await page.getByRole('radio', { name: 'Soft Lavender', exact: true }).check();
+    await page.clock.runFor(32);
+    expect(await read(page)).toEqual(frozen);
+    await expect(page.locator('html')).toHaveAttribute('data-palette', 'lavender');
+    if (close === 'X') await page.getByRole('button', { name: 'Close appearance', exact: true }).click();
+    if (close === 'outside') await page.mouse.click(2, 2);
+    if (close === 'Escape') await page.keyboard.press('Escape');
+    await advanceState(page, true);
+    await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', '');
+    await page.clock.runFor(4700);
+    await expect(page.locator('#timeline')).toHaveValue('0');
+    await page.clock.runFor(400);
+    await expect(page.locator('#timeline')).toHaveValue('1');
+  });
+}
+
+test('Appearance composes with reading, Settings, Pause and detachment; quick reopen retains ownership', async ({
+  page,
+}) => {
+  await prepare(page);
+  await start(page);
+  await page.clock.runFor(1500);
+  await page.locator('#data-tab').click();
+  await page.locator('#appearance-open').click();
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'READING_HOLD APPEARANCE');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'READING_HOLD');
+  await page.locator('#play').click();
+  await page.mouse.move(12, 500);
+  await page.mouse.wheel(0, 120);
+  await page.clock.runFor(1800);
+  await open(page);
+  // Exercise overlapping modal ownership and native queued-close races directly.
+  await page.locator('#appearance-open').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'SETTINGS APPEARANCE');
+  await page.evaluate(() => {
+    (document.getElementById('appearance-dialog') as HTMLDialogElement).close();
+    document.getElementById('appearance-open')!.click();
+  });
+  await page.clock.runFor(32);
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'SETTINGS APPEARANCE');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'SETTINGS');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', '');
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  await expect(page.locator('#play')).toHaveAttribute('aria-label', 'Play journey');
+  await advanceState(page, false);
+});
+
+test('Appearance never starts inactive or Manual journeys; instant theme, Search and credits do not suspend', async ({
+  page,
+}) => {
+  await prepare(page);
+  for (const mode of ['AUTO', 'MANUAL']) {
+    await page.locator('#journey-mode').selectOption(mode);
+    await page.locator('#appearance-open').click();
+    await page.keyboard.press('Escape');
+    await advanceState(page, false);
+    await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'false');
+  }
+  await start(page);
+  await page.clock.runFor(100);
+  await page.locator('#appearance-open').click();
+  const frozen = await read(page);
+  await page.clock.fastForward(30000);
+  expect(await read(page)).toEqual(frozen);
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(1800);
+  await advanceState(page, false);
+  await expect(page.locator('#journey-mode')).toHaveValue('MANUAL');
+  await expect(page.locator('#timeline')).toHaveValue('0');
+  await page.locator('#journey-mode').selectOption('AUTO');
+  for (const id of ['theme', 'search-open', 'about-open']) {
+    await page.locator('#' + id).click();
+    await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', '');
+    await advanceState(page, true);
+    if (id !== 'theme') await page.keyboard.press('Escape');
+  }
+});
+
 for (const close of ['X', 'outside', 'Escape', 'save', 'Cancel'] as const) {
   test(`Auto Settings suspension preserves remaining time and clears on ${close}`, async ({ page }) => {
     await prepare(page);
@@ -164,61 +257,63 @@ for (const mode of ['AUTO', 'MANUAL']) {
   });
 }
 
-test('an active Live stream continues receiving and completes while Settings suspends presentation', async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    const original = window.fetch;
-    const encoder = new TextEncoder();
-    window.fetch = (input, init) => {
-      if (!String(input).startsWith('https://example.test/')) return original(input, init);
-      (window as any).__liveSignal = init?.signal;
-      const frame = (text: string, finish: string | null = null) =>
-        encoder.encode(
-          `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: finish }] })}\n\n`,
+for (const modal of ['Settings', 'Appearance'])
+  test(`an active Live stream continues receiving and completes while ${modal} suspends presentation`, async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const original = window.fetch;
+      const encoder = new TextEncoder();
+      window.fetch = (input, init) => {
+        if (!String(input).startsWith('https://example.test/')) return original(input, init);
+        (window as any).__liveSignal = init?.signal;
+        const frame = (text: string, finish: string | null = null) =>
+          encoder.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: finish }] })}\n\n`,
+          );
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(frame('First chunk. '));
+                (window as any).__finishLive = () => {
+                  controller.enqueue(frame('Still streaming.', 'stop'));
+                  controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                  controller.close();
+                };
+              },
+            }),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
         );
-      return Promise.resolve(
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              controller.enqueue(frame('First chunk. '));
-              (window as any).__finishLive = () => {
-                controller.enqueue(frame('Still streaming.', 'stop'));
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                controller.close();
-              };
-            },
-          }),
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        ),
-      );
-    };
+      };
+    });
+    await prepare(page);
+    await open(page);
+    await page.getByLabel('Base URL', { exact: true }).fill('https://example.test/v1');
+    await page.getByLabel('Model identifier', { exact: true }).fill('fixture');
+    await page.getByLabel('Request streaming', { exact: true }).check();
+    await page.getByRole('button', { name: 'Save connection', exact: true }).click();
+    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+    await page.getByLabel('Chat mode', { exact: true }).selectOption('live');
+    await page.getByRole('textbox', { name: 'Your message', exact: true }).fill('Keep this request running.');
+    await page.getByRole('button', { name: 'Send request', exact: true }).click();
+    await expect(page.locator('.message.assistant p')).toHaveText('First chunk.');
+    await expect(page.getByRole('button', { name: 'Stop request', exact: true })).toBeVisible();
+    await page.clock.runFor(500);
+    if (modal === 'Settings') await open(page);
+    else await page.locator('#appearance-open').click();
+    const frozen = await read(page);
+    await advanceState(page, false);
+    await page.clock.fastForward(30000);
+    expect(await page.evaluate(() => (window as any).__liveSignal.aborted)).toBe(false);
+    await page.evaluate(() => (window as any).__finishLive());
+    await expect(page.locator('#request-status')).toContainText('Response received');
+    await expect(page.locator('.message.assistant p')).toHaveText('First chunk. Still streaming.');
+    expect(await read(page)).toEqual(frozen);
+    await expect(page.locator('#timeline')).toHaveValue('0');
+    await page.keyboard.press('Escape');
+    await advanceState(page, true);
+    await page.clock.runFor(5600);
+    await expect(page.locator('#timeline')).toHaveValue('1');
   });
-  await prepare(page);
-  await open(page);
-  await page.getByLabel('Base URL', { exact: true }).fill('https://example.test/v1');
-  await page.getByLabel('Model identifier', { exact: true }).fill('fixture');
-  await page.getByLabel('Request streaming', { exact: true }).check();
-  await page.getByRole('button', { name: 'Save connection', exact: true }).click();
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Chat mode', { exact: true }).selectOption('live');
-  await page.getByRole('textbox', { name: 'Your message', exact: true }).fill('Keep this request running.');
-  await page.getByRole('button', { name: 'Send request', exact: true }).click();
-  await expect(page.locator('.message.assistant p')).toHaveText('First chunk.');
-  await expect(page.getByRole('button', { name: 'Stop request', exact: true })).toBeVisible();
-  await page.clock.runFor(500);
-  await open(page);
-  const frozen = await read(page);
-  await advanceState(page, false);
-  await page.clock.fastForward(30000);
-  expect(await page.evaluate(() => (window as any).__liveSignal.aborted)).toBe(false);
-  await page.evaluate(() => (window as any).__finishLive());
-  await expect(page.locator('#request-status')).toContainText('Response received');
-  await expect(page.locator('.message.assistant p')).toHaveText('First chunk. Still streaming.');
-  expect(await read(page)).toEqual(frozen);
-  await expect(page.locator('#timeline')).toHaveValue('0');
-  await page.keyboard.press('Escape');
-  await advanceState(page, true);
-  await page.clock.runFor(5600);
-  await expect(page.locator('#timeline')).toHaveValue('1');
-});

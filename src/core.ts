@@ -3,7 +3,7 @@ import type { Evidence, SceneId } from './content.ts';
 
 export type JourneyMode = 'MANUAL' | 'AUTO';
 export type GuidedFocus = 'TRACKING' | 'DETACHED';
-export type JourneySuspension = 'SETTINGS' | 'READING_HOLD';
+export type JourneySuspension = 'SETTINGS' | 'APPEARANCE' | 'READING_HOLD';
 export interface JourneyControl {
   active: boolean;
   journeyMode: JourneyMode;
@@ -75,6 +75,7 @@ export function journeyStatus(state: JourneyControl): string {
   const reasons = [
     ...(state.guidedFocus === 'DETACHED' ? ['Exploring'] : []),
     ...(state.suspensions.includes('SETTINGS') ? ['Settings open'] : []),
+    ...(state.suspensions.includes('APPEARANCE') ? ['Appearance open'] : []),
     ...(state.suspensions.includes('READING_HOLD') ? ['Reading'] : []),
   ];
   if (reasons.length) return `${mode === 'Auto playing' ? 'Auto held' : mode} · ${reasons.join(' · ')}`;

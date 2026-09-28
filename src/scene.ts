@@ -139,7 +139,8 @@ export class AtlasScene {
   private compositionTarget = new T.Vector2();
   private viewportOffset = new T.Vector2();
   private emphasis = new GuidedEmphasis();
-  private guidedSubject?: string;
+  private emphasisEnabled = false;
+  private calloutModels: readonly Callout[] = [];
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
@@ -755,7 +756,7 @@ export class AtlasScene {
     }
     this.setSelected(this.selected);
     this.emphasis.prepare(this.root);
-    this.setGuidedEmphasis(this.guidedSubject);
+    this.updateEmphasisOwners();
     this.applyColours();
     this.dirty = true;
   }
@@ -778,12 +779,19 @@ export class AtlasScene {
     this.colourMap = sceneColours(appearance);
     this.applyColours();
   }
-  setGuidedEmphasis(subject?: string) {
-    this.guidedSubject = subject;
-    // A scene-level stage with no visible subject must not subdue everything.
-    const visible = this.nodes.some((node) => node.id === subject) ? subject : undefined;
-    this.emphasis.setSubject(visible);
-    this.nodes.forEach((node) => node.label.toggleAttribute('data-guided-subject', node.id === visible));
+  setGuidedEmphasis(enabled: boolean) {
+    this.emphasisEnabled = enabled;
+    this.updateEmphasisOwners();
+  }
+  private updateEmphasisOwners() {
+    // Open cards own colour in their remembered scene, even during detachment.
+    // Off-scene pins cannot exempt an unrelated instance in the current scene.
+    const open = this.calloutModels.filter(
+      (card) => card.scene === this.sceneId && this.nodes.some((node) => node.id === card.conceptId),
+    );
+    this.emphasis.setSubjects(this.emphasisEnabled ? new Set(open.map((card) => card.conceptId)) : undefined);
+    const guided = open.find((card) => card.role === 'guided')?.conceptId;
+    this.nodes.forEach((node) => node.label.toggleAttribute('data-guided-subject', node.id === guided));
   }
   private applyColours() {
     this.scene.traverse((object) => {
@@ -858,6 +866,8 @@ export class AtlasScene {
     onClose: (concept: string) => void,
     onInspect: (concept: string) => void,
   ) {
+    this.calloutModels = models;
+    this.updateEmphasisOwners();
     this.callouts ??= new CalloutLayer(this.container.parentElement!, onClose, onInspect);
     this.callouts.setModels(models);
     this.projectCallouts();

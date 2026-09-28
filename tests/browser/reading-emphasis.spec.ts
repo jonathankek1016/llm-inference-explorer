@@ -33,14 +33,22 @@ async function camera(page: Page) {
   });
 }
 async function effects(page: Page) {
-  return page.evaluate(() =>
-    (window as any).__readingScene.emphasis.effects.map((e: any) => ({
+  return page.evaluate(() => {
+    const emphasis = (window as any).__readingScene.emphasis;
+    const originals = new Map();
+    for (const [object, original] of emphasis.originals) {
+      const current = Array.isArray(object.material) ? object.material : [object.material];
+      const source = Array.isArray(original) ? original : [original];
+      current.forEach((material: any, index: number) => originals.set(material, source[index]));
+    }
+    return emphasis.effects.map((e: any) => ({
       owner: e.owner,
       amount: e.amount.value,
       opacity: e.material.opacity,
+      originalOpacity: originals.get(e.material).opacity,
       uuid: e.material.uuid,
-    })),
-  );
+    }));
+  });
 }
 const hold = (page: Page, value = true) =>
   expect(page.locator('.playback')).toHaveAttribute(
@@ -192,10 +200,15 @@ test('Manual/inactive reading never starts Auto; closure and new stage clear sta
   await expect(page.locator('#timeline')).toHaveValue('1');
 });
 
-test('guided emphasis eases between subjects and restores neutral materials during exploration', async ({
+test('Auto emphasis follows all open cards while detached; Manual and inactive remain neutral', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await prepare(page);
+  expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+  await auto(page);
+  await page.locator('#play').click(); // Keep Auto intent paused while checking colour ownership.
+  await page.clock.runFor(1800);
   const initial = await effects(page);
   expect(initial.filter((e: any) => e.owner === 'device').every((e: any) => e.amount === 0)).toBe(true);
   expect(
@@ -214,14 +227,148 @@ test('guided emphasis eases between subjects and restores neutral materials duri
   await page.mouse.move(12, 350);
   await page.mouse.wheel(0, 120);
   await page.clock.runFor(1800);
-  expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  const full = async (id: string, amount = 0) => {
+    const owned = (await effects(page)).filter((e: any) => e.owner === id);
+    expect(owned.length).toBeGreaterThan(0);
+    expect(
+      owned.map((e: any) => e.amount),
+      id,
+    ).toEqual(owned.map(() => amount));
+    expect(owned.every((e: any) => e.opacity === e.originalOpacity)).toBe(true);
+  };
+  await full('device', 1);
+  await full('router');
+  await page.locator('#reset-camera').click();
+  await page.clock.runFor(1800);
+  const pins: string[] = [];
+  for (const id of ['device', 'internet', 'datacenter', 'response']) {
+    await page.locator(`.object-label[data-concept="${id}"]`).focus();
+    await page.keyboard.press('Enter');
+    pins.push(id);
+    await page.clock.runFor(1800);
+    for (const pin of pins) await full(pin);
+    await full('router');
+  }
+  await page.locator('.world-callout[data-subject="internet"] [data-action="close"]').focus();
+  await page.keyboard.press('Enter');
+  await page.clock.runFor(1800);
+  await full('internet', 1);
+  for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
   await page.locator('#resume-focus').click();
   await page.clock.runFor(1800);
   const restored = await effects(page);
-  expect(restored.filter((e: any) => e.owner === 'device').every((e: any) => e.amount === 1)).toBe(true);
+  for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
+  await full('internet', 1);
   expect(restored.map((e: any) => e.uuid)).toEqual(initial.map((e: any) => e.uuid));
   expect((await camera(page)).orthographic).toBe(true);
+  expect(await page.evaluate(() => (window as any).__readingScene.halo.visible)).toBe(true);
+  await page.getByRole('button', { name: 'Block', exact: true }).click();
+  for (const id of ['attention', 'mlp']) {
+    await page.locator(`.object-label[data-concept="${id}"]`).focus();
+    await page.keyboard.press('Enter');
+  }
+  await page.clock.runFor(1800);
+  await full('attention');
+  await full('mlp');
+  await full('norm', 1);
+  await page.locator('#resume-focus').click();
+  await page.clock.runFor(1800);
+  for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
+  await page.getByLabel('Journey mode', { exact: true }).selectOption('MANUAL');
+  await page.clock.runFor(1800);
+  expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+  await auto(page);
+  await page.locator('#stop-tour').click();
+  await page.clock.runFor(1800);
+  expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
 });
+
+test('lit shader reduces chroma while preserving linear luminance, neutral colours and alpha', async ({
+  page,
+}) => {
+  const threeResponse = page.waitForResponse((r) => /\/three\.js(?:\?|$)/.test(r.url()));
+  await prepare(page);
+  const samples = await page.evaluate(
+    async (threePath) => {
+      const T = await import(/* @vite-ignore */ threePath);
+      const { GuidedEmphasis } = await import('/src/emphasis.ts');
+      const renderer = new T.WebGLRenderer({ antialias: false });
+      renderer.setSize(16, 16);
+      renderer.outputColorSpace = T.LinearSRGBColorSpace;
+      renderer.toneMapping = T.NoToneMapping;
+      const scene = new T.Scene();
+      const root = new T.Group();
+      const material = new T.MeshStandardMaterial({ color: '#a7d6c5', roughness: 1, metalness: 0 });
+      const mesh = new T.Mesh(new T.PlaneGeometry(2, 2), material);
+      mesh.userData.concept = 'sample';
+      root.add(mesh);
+      scene.add(root);
+      const hemi = new T.HemisphereLight(0xc5e2e9, 0x9caeaa, 1);
+      const sun = new T.DirectionalLight(0xfffaf0, 0.7);
+      sun.position.set(0, 0, 3);
+      scene.add(hemi, sun);
+      const camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+      camera.position.z = 3;
+      const emphasis = new GuidedEmphasis();
+      emphasis.prepare(root);
+      const sample = (subdued: boolean) => {
+        emphasis.setSubjects(subdued ? new Set() : undefined);
+        emphasis.update(1, true);
+        renderer.render(scene, camera);
+        const gl = renderer.getContext();
+        const pixel = new Uint8Array(4);
+        gl.readPixels(8, 8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        return [...pixel].map((v) => v / 255);
+      };
+      const colour = [sample(false), sample(true)];
+      mesh.material.color.set('#999999');
+      hemi.color.set('#ffffff');
+      hemi.groundColor.set('#ffffff');
+      sun.color.set('#ffffff');
+      const neutral = [sample(false), sample(true)];
+      emphasis.clear();
+      mesh.geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+      return { colour, neutral };
+    },
+    (await threeResponse).url(),
+  );
+  const chroma = (c: number[]) => Math.max(...c.slice(0, 3)) - Math.min(...c.slice(0, 3));
+  const luma = (c: number[]) => c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+  expect(chroma(samples.colour[0])).toBeGreaterThan(0.05);
+  expect(chroma(samples.colour[1]) / chroma(samples.colour[0])).toBeGreaterThan(0.1);
+  expect(chroma(samples.colour[1]) / chroma(samples.colour[0])).toBeLessThan(0.2);
+  expect(Math.abs(luma(samples.colour[0]) - luma(samples.colour[1]))).toBeLessThan(0.005);
+  expect(samples.colour.map((c) => c[3])).toEqual([1, 1]);
+  expect(samples.neutral[0]).toEqual(samples.neutral[1]);
+});
+
+for (const theme of ['light', 'dark'])
+  test(`${theme}: representative chroma emphasis and Monochrome stay readable`, async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await prepare(page);
+    if (theme === 'dark') await page.locator('#theme').click();
+    await page.screenshot({ path: `artifacts/v3.1/${theme}-manual-colour.png` });
+    await auto(page);
+    await page.locator('#play').click();
+    await page.clock.runFor(1800);
+    await page.screenshot({ path: `artifacts/v3.1/${theme}-auto-chroma.png` });
+    for (const id of ['router', 'internet']) {
+      await page.locator(`.object-label[data-concept="${id}"]`).focus();
+      await page.keyboard.press('Enter');
+    }
+    await page.clock.runFor(1800);
+    await page.screenshot({ path: `artifacts/v3.1/${theme}-multiple-colour.png` });
+    await page.locator('#appearance-open').click();
+    await page.getByRole('radio', { name: 'Monochrome', exact: true }).check();
+    await page.keyboard.press('Escape');
+    await page.clock.runFor(1800);
+    await page.screenshot({ path: `artifacts/v3.1/${theme}-monochrome.png` });
+    expect(await page.evaluate(() => (window as any).__readingScene.halo.visible)).toBe(true);
+    expect((await effects(page)).every((e: any) => e.opacity === e.originalOpacity)).toBe(true);
+  });
 
 for (const theme of ['light', 'dark'])
   test(`${theme} emphasis and deeper reference visual review across scenes and palettes`, async ({

@@ -22,27 +22,39 @@ test('owner-scoped emphasis handles shared materials reversibly, including textu
   const shaders = materials.map((material) => {
     const shader = {
       uniforms: {} as Record<string, { value: number }>,
-      fragmentShader: '#include <map_fragment>\n#include <color_fragment>',
+      fragmentShader: '#include <map_fragment>\n#include <color_fragment>\n#include <opaque_fragment>',
     };
     material.onBeforeCompile(shader as any, {} as T.WebGLRenderer);
     return shader;
   });
-  emphasis.setSubject('a');
+  emphasis.setSubjects(new Set(['a']));
   emphasis.update(0.05, false);
   assert.equal(shaders[0].uniforms.guidedSubdue.value, 0);
   assert.ok(shaders[1].uniforms.guidedSubdue.value > 0 && shaders[1].uniforms.guidedSubdue.value < 1);
   emphasis.update(1, true);
   assert.equal(shaders[1].uniforms.guidedSubdue.value, 1);
-  assert.match(shaders[1].fragmentShader, /guidedSubdue \* 0\.45/);
+  assert.match(
+    shaders[1].fragmentShader,
+    /outgoingLight = mix\(outgoingLight, vec3\(guidedLuma\), guidedSubdue \* 0\.85\)/,
+  );
+  assert.doesNotMatch(shaders[1].fragmentShader, /diffuseColor\.rgb \*=|opacity|\.a\s*=/);
   assert.match(shaders[1].fragmentShader, /#include <map_fragment>/);
   assert.equal(materials[1].opacity, 1);
   assert.equal(materials[1].map, original.map);
   assert.equal(materials[1].color.getHex(), original.color.getHex());
-  emphasis.setSubject('b');
+  emphasis.setSubjects(new Set(['a', 'b']));
+  emphasis.update(1, true);
+  assert.equal(shaders[0].uniforms.guidedSubdue.value, 0);
+  assert.equal(shaders[1].uniforms.guidedSubdue.value, 0);
+  emphasis.setSubjects(new Set(['b']));
   emphasis.update(0.05, false);
   assert.ok(shaders[0].uniforms.guidedSubdue.value > 0);
   assert.ok(shaders[1].uniforms.guidedSubdue.value < 1);
-  emphasis.setSubject();
+  emphasis.setSubjects(new Set());
+  emphasis.update(1, true);
+  assert.equal(shaders[0].uniforms.guidedSubdue.value, 1);
+  assert.equal(shaders[1].uniforms.guidedSubdue.value, 1);
+  emphasis.setSubjects();
   emphasis.update(1, true);
   assert.equal(shaders[0].uniforms.guidedSubdue.value, 0);
   assert.equal(shaders[1].uniforms.guidedSubdue.value, 0);
@@ -68,19 +80,19 @@ test('geometry rebuild retains each subject blend and free exploration starts ne
   const amount = () => {
     const shader = {
       uniforms: {} as Record<string, { value: number }>,
-      fragmentShader: '#include <color_fragment>',
+      fragmentShader: '#include <opaque_fragment>',
     };
     mesh.material.onBeforeCompile(shader as any, {} as T.WebGLRenderer);
     return shader.uniforms.guidedSubdue.value;
   };
   emphasis.prepare(root);
-  emphasis.setSubject('decode');
+  emphasis.setSubjects(new Set(['decode']));
   emphasis.update(1, true);
   assert.equal(amount(), 1);
   emphasis.clear(); // Renderer disposes the old geometry before preparing a new root.
   emphasis.prepare(root);
   assert.equal(amount(), 1);
-  emphasis.setSubject();
+  emphasis.setSubjects();
   emphasis.clear();
   emphasis.prepare(root);
   assert.equal(amount(), 0);

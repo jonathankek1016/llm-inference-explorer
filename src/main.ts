@@ -195,7 +195,12 @@ const colourPicker = new ColourPicker($('custom-colour-fields'), (custom) => {
   appearance = { palette: 'custom', custom };
   applyAppearance();
 });
-$('appearance-dialog').addEventListener('close', () => colourPicker.setColour(appearance.custom));
+$('appearance-dialog').addEventListener('close', () => {
+  colourPicker.setColour(appearance.custom);
+  // Native close events are queued; an immediate reopen still owns its blocker.
+  if (!$<HTMLDialogElement>('appearance-dialog').open)
+    updateJourney({ type: 'SET_SUSPENSION', reason: 'APPEARANCE', suspended: false });
+});
 let toastTimer: ReturnType<typeof setTimeout>;
 function toast(text: string) {
   $('toast').textContent = text;
@@ -253,6 +258,7 @@ function renderJourneyControl() {
   $('start-tour').hidden = journey.active;
   $('stop-tour').hidden = !journey.active;
   $('resume-focus').hidden = !journey.active || journey.guidedFocus !== 'DETACHED';
+  renderReplayAction();
   $('guidance-status').textContent = journeyStatus(journey);
   const playback = document.querySelector<HTMLElement>('.playback')!;
   playback.dataset.journeyMode = journey.journeyMode;
@@ -265,9 +271,7 @@ function renderJourneyControl() {
   calibration?.refresh();
 }
 function renderCallouts() {
-  atlas?.setGuidedEmphasis(
-    journey.active && journey.guidedFocus === 'TRACKING' ? frame.event.conceptId : undefined,
-  );
+  atlas?.setGuidedEmphasis(journey.active && journey.journeyMode === 'AUTO');
   const cards = calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts);
   const guided = cards.find((card) => card.role === 'guided');
   if (guided) guided.preferredCalloutRegion = currentFraming(entryFraming).preferredCalloutRegion;
@@ -519,7 +523,21 @@ function restartJourney() {
   updateJourney({ type: 'START' });
   seek(0, { canonical: true });
 }
+function renderReplayAction() {
+  const completed =
+    journey.active &&
+    !journey.playbackRequested &&
+    state.position === trace.length - 1 &&
+    stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts);
+  const replayLabel = completed ? 'Replay from start' : 'Replay journey';
+  const replay = $('replay');
+  replay.setAttribute('aria-label', replayLabel);
+  replay.title = replayLabel;
+  replay.className = completed ? 'text-button' : 'small-icon';
+  replay.innerHTML = `${icon('replay')}${completed ? ' Replay from start' : ''}`;
+}
 function renderPlayback() {
+  renderReplayAction();
   renderCallouts();
   calibration?.refresh();
   $<HTMLInputElement>('timeline').max = String(trace.length - 1);
@@ -813,6 +831,7 @@ document.addEventListener('click', (e) => {
       break;
     case 'appearance-open':
       $<HTMLDialogElement>('appearance-dialog').showModal();
+      updateJourney({ type: 'SET_SUSPENSION', reason: 'APPEARANCE', suspended: true });
       break;
     case 'journey-tab':
       setTab('journey');
