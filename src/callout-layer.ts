@@ -1,5 +1,5 @@
-import { placeCallout } from './callouts.ts';
-import type { Callout, CalloutBounds, ScreenPoint } from './callouts.ts';
+import { placeCallout, relieveCalloutCrowding } from './callouts.ts';
+import type { Callout, CalloutBounds, CalloutRect, ScreenPoint } from './callouts.ts';
 import type { SceneId } from './content.ts';
 
 type CardView = { card: HTMLElement; line: SVGLineElement; content: string; model: Callout };
@@ -75,7 +75,7 @@ export class CalloutLayer {
       view.card.dataset.role = model.role;
       view.card.dataset.subject = model.conceptId;
       view.card.dataset.detached = String(!!model.detached);
-      view.card.style.zIndex = String(order + 1);
+      view.card.style.zIndex = String(model.role === 'guided' ? models.length + 1 : order + 1);
       const content = JSON.stringify(model);
       if (view.content !== content) {
         view.content = content;
@@ -121,7 +121,13 @@ export class CalloutLayer {
   project(scene: SceneId, resolve: (concept: string) => ScreenPoint | undefined) {
     this.refresh = () => this.project(scene, resolve);
     const bounds = this.bounds();
-    for (const { card, line, model } of this.views.values()) {
+    const occupied: CalloutRect[] = [];
+    // Guidance owns its normal placement. Existing references keep insertion
+    // priority, so adding/raising a card never repacks all its older neighbours.
+    const ordered = [...this.views.values()].sort(
+      (a, b) => Number(b.model.role === 'guided') - Number(a.model.role === 'guided'),
+    );
+    for (const { card, line, model } of ordered) {
       const anchor = model.scene === scene ? resolve(model.conceptId) : undefined;
       // Remember off-scene references without attaching them to unrelated geometry.
       const visible = model.scene === scene && (anchor ? anchor.visible : model.role === 'guided');
@@ -131,19 +137,12 @@ export class CalloutLayer {
       card.dataset.anchored = String(!!anchor);
       card.style.maxWidth = `${Math.max(1, bounds.right - bounds.left)}px`;
       card.style.maxHeight = `${Math.max(1, bounds.bottom - bounds.top)}px`;
-      // A previously opened reference can share the canonical subject. Keep both
-      // roles visible on opposite vertical sides of that anchor, without packing.
-      const guided = this.views.get('guided')?.model;
-      const sharesGuidedSubject =
-        model.role === 'exploratory' && guided?.scene === model.scene && guided.conceptId === model.conceptId;
-      const { x, y } = placeCallout(
-        anchor,
-        card.offsetWidth,
-        card.offsetHeight,
-        bounds,
-        sharesGuidedSubject,
-        model.preferredCalloutRegion,
-      );
+      const width = card.offsetWidth;
+      const height = card.offsetHeight;
+      const base = placeCallout(anchor, width, height, bounds, false, model.preferredCalloutRegion);
+      const placement = relieveCalloutCrowding({ ...base, width, height }, anchor, bounds, occupied);
+      occupied.push(placement);
+      const { x, y } = placement;
       card.style.transform = `translate(${x}px, ${y}px)`;
       if (anchor) {
         line.setAttribute('x1', String(anchor.x));
@@ -155,7 +154,7 @@ export class CalloutLayer {
   }
 
   guidedSize() {
-    const card = this.views.get('guided')?.card;
+    const card = [...this.views.values()].find((view) => view.model.role === 'guided')?.card;
     if (!card) return undefined;
     // A new subject may begin outside the viewport. Measure synchronously before
     // its focus transition without making an off-screen annotation stay visible.

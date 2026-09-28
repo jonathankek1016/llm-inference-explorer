@@ -329,21 +329,138 @@ test('callouts inherit readable palette tokens, retain keyboard controls and fit
   }
 });
 
-test('a pre-opened reference stays distinct from the guided card for the same subject', async ({ page }) => {
+for (const theme of ['light', 'dark']) {
+  test(`${theme}: a pinned card hands off to guidance and back without duplication or losing its identity`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await prepare(page, false);
+    if (theme === 'dark') await page.locator('#theme').click();
+    await label(page, 'router');
+    await label(page, 'datacenter');
+    const router = explorer(page, 'router');
+    await router.evaluate((card) => ((window as any).__pinnedCard = card));
+    const referenceText = await router.innerText();
+    const unrelated = await explorer(page, 'datacenter').innerText();
+    await page.locator('#start-tour').click();
+    await page.clock.runFor(1800);
+    await expect(guided(page)).toHaveAttribute('data-callout-id', 'guided');
+    await expect(router).toHaveAttribute('data-role', 'exploratory');
+    await page.locator('#next').click();
+    await page.clock.runFor(1800);
+    await expect(page.locator('.world-callout[data-subject="router"]')).toHaveCount(1);
+    await expect(guided(page)).toHaveCount(1);
+    await expect(router).toHaveAttribute('data-role', 'guided');
+    expect(await router.evaluate((card) => card === (window as any).__pinnedCard)).toBe(true);
+    await expect(router).toContainText('Journey');
+    await expect(router).toContainText('2 / 18');
+    await expect(router).toContainText('The router forwards traffic');
+    await expect(router.locator('[data-action="close"]')).toHaveCount(0);
+    await router.getByRole('button', { name: 'Read in Inspector' }).click();
+    await expect(page.locator('#inspector-header h2')).toHaveText('Wi-Fi & router');
+    await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'TRACKING');
+    await page.screenshot({ path: `artifacts/callouts/${theme}-handoff-guided.png` });
+    await page.locator('#next').click();
+    await page.clock.runFor(1800);
+    await expect(router).toHaveAttribute('data-role', 'exploratory');
+    expect(await router.innerText()).toBe(referenceText);
+    expect(await explorer(page, 'datacenter').innerText()).toBe(unrelated);
+    expect(await router.evaluate((card) => card === (window as any).__pinnedCard)).toBe(true);
+    await page.locator('#previous').click();
+    await page.clock.runFor(1800);
+    await page.getByRole('button', { name: 'Hardware', exact: true }).click();
+    await expect(router).toBeHidden();
+    await page.locator('#resume-focus').click();
+    await page.clock.runFor(1800);
+    await expect(router).toBeVisible();
+    await expect(router).toHaveAttribute('data-role', 'guided');
+    await page.locator('#stop-tour').click();
+    await expect(guided(page)).toHaveCount(0);
+    expect(await router.innerText()).toBe(referenceText);
+    await page.screenshot({ path: `artifacts/callouts/${theme}-handoff-exploratory.png` });
+    await router.getByRole('button', { name: 'Close Wi-Fi & router callout' }).click();
+    await expect(router).toHaveCount(0);
+    await expect(explorer(page, 'datacenter')).toHaveCount(1);
+  });
+}
+
+test('repeated decode stages reuse a pinned guided card through Auto, pause and Stop', async ({ page }) => {
+  await prepare(page, false);
+  await page.getByRole('button', { name: 'Model', exact: true }).click();
+  await label(page, 'decode');
+  const decode = explorer(page, 'decode');
+  await decode.evaluate((card) => ((window as any).__decodeCard = card));
+  await page.locator('#start-tour').click();
+  await page.locator('#timeline').fill('14');
+  await page.clock.runFor(1800);
+  await page.getByLabel('Journey mode', { exact: true }).selectOption('AUTO');
+  for (let pass = 1; pass <= 3; pass++) {
+    await expect(page.locator('.world-callout[data-subject="decode"]')).toHaveCount(1);
+    await expect(decode).toHaveAttribute('data-role', 'guided');
+    await expect(decode).toContainText(`Pass ${pass}`);
+    await expect(decode).toContainText(`${14 + pass} / 18`);
+    expect(await decode.evaluate((card) => card === (window as any).__decodeCard)).toBe(true);
+    if (pass < 3) await page.clock.runFor(5050);
+  }
+  await page.locator('#play').click();
+  await page.locator('#stop-tour').click();
+  await expect(decode).toHaveAttribute('data-role', 'exploratory');
+  await expect(decode.locator('[data-action="close"]')).toBeVisible();
+});
+
+test('nearby crowding preserves older placements, guided priority, panel clearance and leader anchors', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await prepare(page, false);
-  await label(page, 'device');
+  await page.clock.runFor(1800);
+  const placements = () =>
+    page
+      .locator('.world-callout:visible')
+      .evaluateAll((cards) =>
+        Object.fromEntries(
+          cards.map((card) => [
+            (card as HTMLElement).dataset.calloutId,
+            (card as HTMLElement).style.transform,
+          ]),
+        ),
+      );
+  for (const id of ['device', 'router', 'internet', 'datacenter', 'response']) {
+    const before = await placements();
+    await label(page, id);
+    const after = await placements();
+    for (const key of Object.keys(before)) expect(after[key]).toBe(before[key]);
+  }
+  const settled = await placements();
+  await page.clock.runFor(1000);
+  expect(await placements()).toEqual(settled);
+  await page.screenshot({ path: 'artifacts/callouts/crowding-exploration.png' });
   await page.locator('#start-tour').click();
   await page.clock.runFor(1800);
-  await expect(guided(page)).toBeVisible();
-  await expect(explorer(page, 'device')).toBeVisible();
-  const lesson = (await guided(page).boundingBox())!;
-  const reference = (await explorer(page, 'device').boundingBox())!;
-  expect(reference.y).toBeGreaterThan(lesson.y + lesson.height);
-  await expect(guided(page)).toContainText('Journey');
-  await expect(explorer(page, 'device')).toContainText('Exploring');
-  await page.screenshot({ path: 'artifacts/callouts/shared-subject.png' });
-  await explorer(page, 'device').getByRole('button', { name: 'Close Your device callout' }).click();
-  await expect(guided(page)).toBeVisible();
-  await expect(explorer(page, 'device')).toHaveCount(0);
+  const priority = await guided(page).getAttribute('style');
+  await label(page, 'router');
+  expect(await guided(page).getAttribute('style')).toBe(priority);
+  const check = await page.evaluate(() => {
+    const left = document.querySelector('#journey-panel')!.getBoundingClientRect().right + 12;
+    const right = document.querySelector('#inspector-panel')!.getBoundingClientRect().left - 58;
+    const bottom = document.querySelector('.playback')!.getBoundingClientRect().top - 56;
+    return [...document.querySelectorAll<HTMLElement>('.world-callout:not([hidden])')].every((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.left >= left - 1 && rect.right <= right + 1 && rect.bottom <= bottom + 1;
+    });
+  });
+  expect(check).toBe(true);
+  const anchors = (await camera(page)).anchors;
+  const lines = await page
+    .locator('.callout-leaders line')
+    .evaluateAll((lines) =>
+      lines
+        .filter((line) => (line as SVGLineElement).style.display !== 'none')
+        .map((line) => [Number(line.getAttribute('x1')), Number(line.getAttribute('y1'))]),
+    );
+  for (const [x, y] of lines)
+    expect(anchors.some((anchor: any) => Math.abs(anchor.x - x) < 1 && Math.abs(anchor.y - y) < 1)).toBe(
+      true,
+    );
+  await page.screenshot({ path: 'artifacts/callouts/crowding-guided.png' });
 });

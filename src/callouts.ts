@@ -45,8 +45,12 @@ export function calloutPresentation(
   }));
   if (journey.active) {
     const concept = concepts[event.conceptId];
+    // Presentation ownership changes, but the remembered exploratory pin does not.
+    // Reuse its key so the same card can return to its original view after guidance.
+    const pinned = cards.findIndex((card) => card.conceptId === concept.id);
+    const id = pinned >= 0 ? cards.splice(pinned, 1)[0].id : 'guided';
     cards.unshift({
-      id: 'guided',
+      id,
       role: 'guided',
       conceptId: concept.id,
       scene: concept.scene,
@@ -78,6 +82,80 @@ export interface CalloutBounds {
   top: number;
   right: number;
   bottom: number;
+}
+
+export interface CalloutRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Small local alternatives only. Preferred placement/side remains authoritative;
+// an unsolvable cluster may overlap rather than sending cards across the scene.
+export function relieveCalloutCrowding(
+  base: CalloutRect,
+  anchor: ScreenPoint | undefined,
+  bounds: CalloutBounds,
+  occupied: readonly CalloutRect[],
+) {
+  const offsets = [
+    [0, 0],
+    [0, -48],
+    [0, 48],
+    [-48, 0],
+    [48, 0],
+    [-48, -48],
+    [48, -48],
+    [-48, 48],
+    [48, 48],
+    [0, -96],
+    [0, 96],
+    [-96, 0],
+    [96, 0],
+  ];
+  const score = (candidate: CalloutRect) =>
+    occupied.reduce(
+      (area, other) =>
+        area +
+        Math.max(
+          0,
+          Math.min(candidate.x + candidate.width, other.x + other.width + 8) -
+            Math.max(candidate.x, other.x - 8),
+        ) *
+          Math.max(
+            0,
+            Math.min(candidate.y + candidate.height, other.y + other.height + 8) -
+              Math.max(candidate.y, other.y - 8),
+          ),
+      0,
+    ) +
+    Math.hypot(candidate.x - base.x, candidate.y - base.y) * 12;
+  let best = base;
+  let bestScore = score(base);
+  for (const [dx, dy] of offsets.slice(1)) {
+    const candidate = {
+      ...base,
+      x: Math.max(bounds.left, Math.min(base.x + dx, bounds.right - base.width)),
+      y: Math.max(bounds.top, Math.min(base.y + dy, bounds.bottom - base.height)),
+    };
+    // Do not cross the subject to evade another card. Clamping may already have
+    // compromised one axis; retain every side that the baseline can respect.
+    if (
+      anchor &&
+      ((base.x >= anchor.x + 28 && candidate.x < anchor.x + 28) ||
+        (base.x + base.width <= anchor.x - 28 && candidate.x + base.width > anchor.x - 28) ||
+        (base.y >= anchor.y + 24 && candidate.y < anchor.y + 24) ||
+        (base.y + base.height <= anchor.y - 24 && candidate.y + base.height > anchor.y - 24))
+    )
+      continue;
+    const candidateScore = score(candidate);
+    if (candidateScore < bestScore) {
+      best = candidate;
+      bestScore = candidateScore;
+    }
+  }
+  return best;
 }
 
 // Conservative two-sided placement, not a collision solver or authored framing.
