@@ -1000,7 +1000,8 @@ svg {
   text-align: right;
 }
 #start-tour,
-#stop-tour {
+#stop-tour,
+#complete-tour {
   font-size: 0.625rem;
   white-space: nowrap;
 }

@@ -15,6 +15,8 @@ import {
   transitionJourney,
   journeyAdvancing,
   journeySuspended,
+  journeyFlowActive,
+  journeyFlowSuspended,
   journeyStatus,
   advanceJourneyTime,
 } from './core.ts';
@@ -248,7 +250,7 @@ function renderJourneyControl() {
   const advancing = journeyAdvancing(journey);
   if (atlas) {
     atlas.setPresentationSuspended(journeySuspended(journey));
-    atlas.playing = advancing;
+    atlas.setTeachingFlow(journeyFlowActive(journey), journeyFlowSuspended(journey));
     atlas.dirty = true;
   }
   $('play').innerHTML = icon(journey.playbackRequested ? 'pause' : 'play');
@@ -268,7 +270,7 @@ function renderJourneyControl() {
   calibration?.refresh();
 }
 function renderCallouts() {
-  atlas?.setGuidedEmphasis(journey.active && journey.journeyMode === 'AUTO');
+  atlas?.setGuidedEmphasis(journey.active);
   const cards = calloutPresentation(journey, frame.event, frame.index, trace.length, exploratoryCallouts);
   const guided = cards.find((card) => card.role === 'guided');
   if (guided) guided.preferredCalloutRegion = currentFraming(entryFraming).preferredCalloutRegion;
@@ -494,6 +496,7 @@ function renderStages() {
   }
 }
 function seek(position: number, options: { preserveView?: boolean; canonical?: boolean } = {}) {
+  if (journey.completed) updateJourney({ type: 'NAVIGATE' });
   const previousScene = state.scene;
   const previousOfficialScene = frame.scene;
   frame = frameAt(trace, position);
@@ -521,16 +524,13 @@ function restartJourney() {
   seek(0, { canonical: true });
 }
 function renderReplayAction() {
-  const completed =
-    journey.active &&
-    !journey.playbackRequested &&
-    state.position === trace.length - 1 &&
-    stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts);
+  const completed = journey.completed;
   // Completion retains guided ownership; it is not the ordinary Stop action.
-  const autoCompleted = journey.journeyMode === 'AUTO' && completed;
-  $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL' || autoCompleted);
-  $('stop-tour').hidden = !journey.active || autoCompleted;
-  $('guidance-status').textContent = autoCompleted ? 'Journey complete' : journeyStatus(journey);
+  $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL' || completed);
+  $('stop-tour').hidden = !journey.active || completed;
+  $('complete-tour').hidden =
+    !journey.active || completed || journey.journeyMode !== 'MANUAL' || state.position !== trace.length - 1;
+  $('guidance-status').textContent = journeyStatus(journey);
   const replayLabel = completed ? 'Replay from start' : 'Replay journey';
   const replay = $('replay');
   replay.setAttribute('aria-label', replayLabel);
@@ -884,6 +884,10 @@ document.addEventListener('click', (e) => {
       atlas?.cancelFocus();
       updateJourney({ type: 'STOP' });
       break;
+    case 'complete-tour':
+      if (journey.active && journey.journeyMode === 'MANUAL' && state.position === trace.length - 1)
+        updateJourney({ type: 'COMPLETE' });
+      break;
     case 'previous':
       navigateStage(state.position - 1);
       break;
@@ -1125,7 +1129,7 @@ function tick(time: number) {
       stageElapsed >= teachingDuration(frame.event, state.local, framingDrafts)
     ) {
       if (state.position < trace.length - 1) seek(state.position + 1);
-      else setPlaying(false);
+      else updateJourney({ type: 'COMPLETE' });
     }
   }
   requestAnimationFrame(tick);

@@ -30,6 +30,183 @@ const readCamera = (page: Page) =>
     };
   });
 
+const particle = (page: Page) =>
+  page.evaluate(() => {
+    const s = (window as any).__playbackScene;
+    return {
+      id: s.packet.uuid,
+      elapsed: s.packetElapsed,
+      position: s.packet.position.toArray(),
+      visible: s.packet.visible,
+    };
+  });
+
+test('Manual final stage offers immediate top-row Complete, preserving guided completion and ordinary Stop', async ({
+  page,
+}) => {
+  await prepare(page);
+  await mode(page, 'MANUAL');
+  await page.locator('#start-tour').click();
+  await expect(page.locator('#complete-tour')).toBeHidden();
+  await page.locator('#timeline').fill('17');
+  await expect(page.locator('.playback-top #stop-tour + #complete-tour')).toBeVisible();
+  await expect(page.locator('#next')).toBeDisabled();
+  const nav = await page.locator('#previous').boundingBox();
+  await page.locator('#previous').click();
+  await expect(page.locator('#complete-tour')).toBeHidden();
+  await page.locator('#next').click();
+  await expect(page.locator('#complete-tour')).toBeVisible();
+  expect(await page.locator('#previous').boundingBox()).toEqual(nav);
+  await page.clock.runFor(1800);
+  const camera = await readCamera(page);
+  await page.locator('.playback').screenshot({ path: 'artifacts/v3.1/part4-manual-final-light.png' });
+  await page.locator('#complete-tour').click();
+  await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
+  await expect(page.locator('#play')).toBeDisabled();
+  await expect(page.locator('#complete-tour')).toBeHidden();
+  await expect(page.locator('#stop-tour')).toBeHidden();
+  await expect(page.locator('#replay')).toHaveText('Replay from start');
+  await stage(page, 17);
+  expect(await readCamera(page)).toEqual(camera);
+  expect((await particle(page)).visible).toBe(false);
+  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveAttribute(
+    'data-subject',
+    'response',
+  );
+  await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'true');
+  expect(await page.evaluate(() => (window as any).__playbackScene.emphasisEnabled)).toBe(true);
+  await page.locator('#theme').click();
+  await page.locator('.playback').screenshot({ path: 'artifacts/v3.1/part4-manual-complete-dark.png' });
+  await page.locator('#replay').click();
+  await stage(page, 0);
+  await expect(page.locator('#journey-mode')).toHaveValue('MANUAL');
+  await advancing(page, false);
+  await page.clock.runFor(100);
+  expect((await particle(page)).visible).toBe(true);
+  await page.locator('#timeline').fill('17');
+  await page.locator('#stop-tour').click();
+  await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
+  await expect(page.locator('#complete-tour')).toBeHidden();
+  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
+  expect((await particle(page)).visible).toBe(false);
+});
+
+test('same-stage mode toggles preserve remaining time while attached, detached and at the final stage', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await prepare(page);
+  await page.locator('#start-tour').click();
+  await page.clock.runFor(2200);
+  const camera = await readCamera(page);
+  for (let i = 0; i < 3; i++) {
+    await mode(page, 'MANUAL');
+    await page.clock.runFor(1000);
+    await mode(page, 'AUTO');
+    expect(await readCamera(page)).toEqual(camera);
+  }
+  await page.clock.runFor(3500);
+  await stage(page, 0);
+  await page.clock.runFor(500);
+  await stage(page, 1);
+  await page.locator('#timeline').fill('17');
+  await page.clock.runFor(2200);
+  await page.mouse.move(12, 400);
+  await page.mouse.wheel(0, 120);
+  await mode(page, 'MANUAL');
+  await expect(page.locator('#complete-tour')).toBeVisible();
+  await page.clock.runFor(1000);
+  await mode(page, 'AUTO');
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  await page.clock.runFor(1000);
+  await advancing(page, false);
+  await page.locator('#resume-focus').click();
+  await page.clock.runFor(3500);
+  await expect(page.locator('#guidance-status')).not.toHaveText('Journey complete');
+  await page.clock.runFor(500);
+  await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
+  expect((await particle(page)).visible).toBe(false);
+  // A never-timed Manual final stage gets the full interval on switching to Auto.
+  await mode(page, 'MANUAL');
+  await page.locator('#replay').click();
+  await page.locator('#timeline').fill('17');
+  await mode(page, 'AUTO');
+  await page.clock.runFor(5600);
+  await expect(page.locator('#guidance-status')).not.toHaveText('Journey complete');
+  await page.clock.runFor(600);
+  await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
+});
+
+test('active flow survives modes, Pause, Reading Hold and detachment; modals freeze the same particle', async ({
+  page,
+}) => {
+  await prepare(page);
+  await mode(page, 'AUTO');
+  await page.clock.runFor(32);
+  expect((await particle(page)).visible).toBe(false);
+  await page.locator('#start-tour').click();
+  await page.clock.runFor(500);
+  const initial = await particle(page);
+  expect(initial.visible).toBe(true);
+  for (const value of ['MANUAL', 'AUTO', 'MANUAL', 'AUTO']) {
+    // Compare within one event turn: the real renderer must be allowed to move
+    // between browser automation commands, but the mode event itself cannot reset it.
+    const edge = await page.locator('#journey-mode').evaluate((select: HTMLSelectElement, value) => {
+      const s = (window as any).__playbackScene;
+      const read = () => ({
+        id: s.packet.uuid,
+        elapsed: s.packetElapsed,
+        position: s.packet.position.toArray(),
+        visible: s.packet.visible,
+      });
+      const before = read();
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return { before, after: read() };
+    }, value);
+    const before = edge.before;
+    expect(edge.after).toEqual(before);
+    await page.clock.runFor(160);
+    const after = await particle(page);
+    expect(after.id).toBe(initial.id);
+    expect(after.elapsed).toBeGreaterThan(before.elapsed);
+    expect(after.position).not.toEqual(before.position);
+  }
+  await page.locator('#data-tab').click();
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'READING_HOLD');
+  const reading = await particle(page);
+  await page.clock.runFor(160);
+  expect((await particle(page)).elapsed).toBeGreaterThan(reading.elapsed);
+  await advancing(page, false);
+  for (const modal of ['settings', 'appearance']) {
+    await page.locator(`#${modal}-open`).click();
+    const frozen = await particle(page);
+    await page.clock.runFor(300);
+    expect(await particle(page)).toEqual(frozen);
+    expect(frozen.visible).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'READING_HOLD');
+    await page.clock.runFor(160);
+    expect((await particle(page)).elapsed).toBeGreaterThan(frozen.elapsed);
+    await advancing(page, false);
+  }
+  await page.locator('#play').click();
+  const paused = await particle(page);
+  await page.clock.runFor(160);
+  expect((await particle(page)).elapsed).toBeGreaterThan(paused.elapsed);
+  await page.mouse.move(12, 400);
+  await page.mouse.wheel(0, 120);
+  for (const value of ['AUTO', 'MANUAL']) {
+    await mode(page, value);
+    const detached = await particle(page);
+    await page.clock.runFor(160);
+    expect((await particle(page)).elapsed).toBeGreaterThan(detached.elapsed);
+    await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  }
+  await page.locator('#stop-tour').click();
+  expect((await particle(page)).visible).toBe(false);
+});
+
 test('completed Auto offers Replay from start without changing restart or final-stage ownership', async ({
   page,
 }) => {

@@ -6,6 +6,7 @@ export type GuidedFocus = 'TRACKING' | 'DETACHED';
 export type JourneySuspension = 'SETTINGS' | 'APPEARANCE' | 'READING_HOLD';
 export interface JourneyControl {
   active: boolean;
+  completed: boolean;
   journeyMode: JourneyMode;
   guidedFocus: GuidedFocus;
   playbackRequested: boolean;
@@ -15,12 +16,13 @@ export type JourneyAction =
   | { type: 'SET_MODE'; mode: JourneyMode }
   | { type: 'SET_SUSPENSION'; reason: JourneySuspension; suspended: boolean }
   | { type: 'NAVIGATE'; guidedFocus?: GuidedFocus }
-  | { type: 'START' | 'STOP' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
+  | { type: 'START' | 'STOP' | 'COMPLETE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
 
 export function createJourneyControl(): JourneyControl {
   // Preserve the existing ready-to-play replay, without starting a timer on load.
   return {
     active: false,
+    completed: false,
     journeyMode: 'AUTO',
     guidedFocus: 'TRACKING',
     playbackRequested: false,
@@ -34,7 +36,7 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
       return {
         ...state,
         journeyMode: action.mode,
-        playbackRequested: state.active && action.mode === 'AUTO',
+        playbackRequested: state.active && !state.completed && action.mode === 'AUTO',
       };
     case 'SET_SUSPENSION':
       return {
@@ -49,15 +51,25 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
       return {
         ...state,
         active: true,
+        completed: false,
         guidedFocus: 'TRACKING',
         playbackRequested: state.journeyMode === 'AUTO',
       };
     case 'NAVIGATE':
-      return { ...state, active: true, guidedFocus: action.guidedFocus ?? state.guidedFocus };
+      return {
+        ...state,
+        active: true,
+        completed: false,
+        guidedFocus: action.guidedFocus ?? state.guidedFocus,
+      };
     case 'STOP':
-      return { ...state, active: false, playbackRequested: false, guidedFocus: 'TRACKING' };
+      return { ...state, active: false, completed: false, playbackRequested: false, guidedFocus: 'TRACKING' };
+    case 'COMPLETE':
+      return state.active ? { ...state, completed: true, playbackRequested: false } : state;
     case 'PLAY':
-      return { ...state, active: true, playbackRequested: state.journeyMode === 'AUTO' };
+      return state.completed
+        ? state
+        : { ...state, active: true, playbackRequested: state.journeyMode === 'AUTO' };
     case 'PAUSE':
       return { ...state, playbackRequested: false };
     case 'DETACH':
@@ -70,6 +82,7 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
 /** Intent and temporary blockers are reported separately, just as they are stored. */
 export function journeyStatus(state: JourneyControl): string {
   if (!state.active) return 'Free exploration';
+  if (state.completed) return 'Journey complete';
   const mode =
     state.journeyMode === 'MANUAL' ? 'Manual' : state.playbackRequested ? 'Auto playing' : 'Auto paused';
   const reasons = [
@@ -86,9 +99,19 @@ export function journeySuspended(state: JourneyControl): boolean {
   return state.suspensions.length > 0;
 }
 
+/** Reading holds the countdown; only modal interruptions freeze particle flow. */
+export function journeyFlowSuspended(state: JourneyControl): boolean {
+  return state.suspensions.some((reason) => reason === 'SETTINGS' || reason === 'APPEARANCE');
+}
+
+export function journeyFlowActive(state: JourneyControl): boolean {
+  return state.active && !state.completed;
+}
+
 export function journeyAdvancing(state: JourneyControl): boolean {
   return (
     state.active &&
+    !state.completed &&
     state.journeyMode === 'AUTO' &&
     state.guidedFocus === 'TRACKING' &&
     state.playbackRequested &&

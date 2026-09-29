@@ -104,7 +104,8 @@ export class AtlasScene {
   explode = 0.65;
   decode = 0;
   refinement = 0;
-  playing = false;
+  private flowActive = false;
+  private flowSuspended = false;
   reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   dirty = true;
   private observer: ResizeObserver;
@@ -971,6 +972,14 @@ export class AtlasScene {
     this.lastTime = performance.now();
     this.dirty = true;
   }
+  setTeachingFlow(active: boolean, suspended: boolean) {
+    if (this.flowActive === active && this.flowSuspended === suspended) return;
+    this.flowActive = active;
+    this.flowSuspended = suspended;
+    this.lastTime = performance.now();
+    if (!active) this.packet.visible = false;
+    this.dirty = true;
+  }
   reset() {
     this.cancelFocus();
     this.camera.position.set(11, 10.5, 15);
@@ -1063,9 +1072,10 @@ export class AtlasScene {
     if (!this.presentationSuspended) {
       if (this.emphasis.update(dt, this.reduced)) this.dirty = true;
       this.controls.update();
-      this.packet.visible = this.playing && !this.reduced && this.paths.length > 0;
     }
-    if (this.packet.visible && !this.presentationSuspended) {
+    if (!this.flowSuspended || !this.flowActive)
+      this.packet.visible = this.flowActive && !this.reduced && this.paths.length > 0;
+    if (this.packet.visible && !this.flowSuspended) {
       this.packetElapsed += dt * 1000;
       const index =
         this.sceneId === 'world'

@@ -6,10 +6,77 @@ import {
   journeyAdvancing,
   journeyStatus,
   advanceJourneyTime,
+  journeyFlowActive,
+  journeyFlowSuspended,
   makeTrace,
 } from '../src/core.ts';
 import { teachingDuration, framingStageKey } from '../src/framing.ts';
 import { scenarios } from '../src/content.ts';
+
+test('completion preserves guided ownership and mode until navigation/restart; Stop stays distinct', () => {
+  for (const mode of ['MANUAL', 'AUTO'] as const) {
+    let state = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode });
+    assert.equal(transitionJourney(state, { type: 'COMPLETE' }), state);
+    state = transitionJourney(state, { type: 'START' });
+    const complete = transitionJourney(state, { type: 'COMPLETE' });
+    assert.equal(complete.active, true);
+    assert.equal(complete.guidedFocus, 'TRACKING');
+    assert.equal(complete.journeyMode, mode);
+    assert.equal(journeyStatus(complete), 'Journey complete');
+    assert.equal(journeyAdvancing(complete), false);
+    assert.equal(journeyFlowActive(complete), false);
+    assert.equal(transitionJourney(complete, { type: 'PLAY' }), complete);
+    assert.equal(journeyAdvancing(transitionJourney(complete, { type: 'SET_MODE', mode: 'AUTO' })), false);
+    assert.equal(transitionJourney(complete, { type: 'NAVIGATE' }).completed, false);
+    const restarted = transitionJourney(complete, { type: 'START' });
+    assert.equal(restarted.completed, false);
+    assert.equal(restarted.playbackRequested, mode === 'AUTO');
+    const stopped = transitionJourney(state, { type: 'STOP' });
+    assert.equal(stopped.completed, false);
+    assert.equal(journeyStatus(stopped), 'Free exploration');
+  }
+});
+
+test('same-stage mode changes freeze and resume elapsed time, including repeated detached toggles', () => {
+  let state = transitionJourney(createJourneyControl(), { type: 'START' });
+  let elapsed = 6000;
+  for (const focus of ['TRACKING', 'DETACHED'] as const) {
+    state = transitionJourney(state, { type: focus === 'TRACKING' ? 'RESUME' : 'DETACH' });
+    for (let i = 0; i < 3; i++) {
+      state = transitionJourney(state, { type: 'SET_MODE', mode: 'MANUAL' });
+      elapsed = advanceJourneyTime(state, elapsed, 30000);
+      assert.equal(elapsed, 6000);
+      state = transitionJourney(state, { type: 'SET_MODE', mode: 'AUTO' });
+      assert.equal(state.guidedFocus, focus);
+      assert.equal(state.playbackRequested, true);
+      assert.equal(advanceJourneyTime(state, elapsed, 100), focus === 'TRACKING' ? 6100 : 6000);
+    }
+  }
+});
+
+test('flow follows active incomplete ownership; only modal reasons freeze it', () => {
+  const inactive = createJourneyControl();
+  assert.equal(journeyFlowActive(inactive), false);
+  for (const mode of ['MANUAL', 'AUTO'] as const) {
+    let state = transitionJourney(transitionJourney(inactive, { type: 'SET_MODE', mode }), { type: 'START' });
+    for (const type of ['PAUSE', 'DETACH'] as const) {
+      state = transitionJourney(state, { type });
+      assert.equal(journeyFlowActive(state), true);
+      assert.equal(journeyFlowSuspended(state), false);
+    }
+    state = transitionJourney(state, { type: 'SET_SUSPENSION', reason: 'READING_HOLD', suspended: true });
+    assert.equal(journeyFlowSuspended(state), false);
+    for (const reason of ['SETTINGS', 'APPEARANCE'] as const)
+      state = transitionJourney(state, { type: 'SET_SUSPENSION', reason, suspended: true });
+    state = transitionJourney(state, { type: 'SET_SUSPENSION', reason: 'SETTINGS', suspended: false });
+    assert.equal(journeyFlowSuspended(state), true);
+    state = transitionJourney(state, { type: 'SET_SUSPENSION', reason: 'APPEARANCE', suspended: false });
+    assert.equal(journeyFlowActive(state), true);
+    assert.equal(journeyFlowSuspended(state), false);
+    assert.equal(journeyAdvancing(state), false);
+    assert.equal(journeyFlowActive(transitionJourney(state, { type: 'STOP' })), false);
+  }
+});
 
 test('every scenario and route uses authored teaching pace, with longer conceptual transformations', () => {
   for (const scenario of Object.keys(scenarios))

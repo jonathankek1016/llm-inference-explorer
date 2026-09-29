@@ -200,12 +200,18 @@ test('Manual/inactive reading never starts Auto; closure and new stage clear sta
   await expect(page.locator('#timeline')).toHaveValue('1');
 });
 
-test('Auto emphasis follows all open cards while detached; Manual and inactive remain neutral', async ({
+test('Manual and Auto emphasis follow all open cards while detached; only inactive remains neutral', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await prepare(page);
+  await prepare(page, false);
+  await page.locator('#journey-mode').selectOption('MANUAL');
   expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+  await page.locator('#start-tour').click();
+  await page.clock.runFor(1800);
+  const manual = await effects(page);
+  expect(manual.filter((e: any) => e.owner === 'device').every((e: any) => e.amount === 0)).toBe(true);
+  expect(manual.filter((e: any) => e.owner === 'router').every((e: any) => e.amount === 1)).toBe(true);
   await auto(page);
   await page.locator('#play').click(); // Keep Auto intent paused while checking colour ownership.
   await page.clock.runFor(1800);
@@ -277,7 +283,14 @@ test('Auto emphasis follows all open cards while detached; Manual and inactive r
   for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
   await page.getByLabel('Journey mode', { exact: true }).selectOption('MANUAL');
   await page.clock.runFor(1800);
-  expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+  for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
+  await full('internet', 1);
+  await page.mouse.move(12, 350);
+  await page.mouse.wheel(0, 120);
+  await page.clock.runFor(1800);
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  for (const id of ['device', 'router', 'datacenter', 'response']) await full(id);
+  await full('internet', 1);
   await auto(page);
   await page.locator('#stop-tour').click();
   await page.clock.runFor(1800);
