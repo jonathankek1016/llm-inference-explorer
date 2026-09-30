@@ -13,6 +13,33 @@ import {
 import { teachingDuration, framingStageKey } from '../src/framing.ts';
 import { scenarios } from '../src/content.ts';
 
+test('Explore releases only completed ownership, preserving mode and independent modal blockers', () => {
+  for (const mode of ['MANUAL', 'AUTO'] as const) {
+    const ready = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode });
+    assert.equal(transitionJourney(ready, { type: 'EXPLORE' }), ready);
+    const active = transitionJourney(ready, { type: 'START' });
+    assert.equal(transitionJourney(active, { type: 'EXPLORE' }), active);
+    const complete = transitionJourney(active, { type: 'COMPLETE' });
+    const held = transitionJourney(complete, {
+      type: 'SET_SUSPENSION',
+      reason: 'APPEARANCE',
+      suspended: true,
+    });
+    const exploring = transitionJourney(held, { type: 'EXPLORE' });
+    assert.equal(exploring.active, false);
+    assert.equal(exploring.completed, false);
+    assert.equal(exploring.playbackRequested, false);
+    assert.equal(exploring.journeyMode, mode);
+    assert.deepEqual(exploring.suspensions, ['APPEARANCE']);
+    assert.equal(journeyStatus(exploring), 'Free exploration');
+    assert.equal(journeyAdvancing(exploring), false);
+    assert.equal(journeyFlowActive(exploring), false);
+    const restarted = transitionJourney(exploring, { type: 'START' });
+    assert.equal(restarted.active, true);
+    assert.equal(restarted.playbackRequested, mode === 'AUTO');
+  }
+});
+
 test('completion preserves guided ownership and mode until navigation/restart; Stop stays distinct', () => {
   for (const mode of ['MANUAL', 'AUTO'] as const) {
     let state = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode });

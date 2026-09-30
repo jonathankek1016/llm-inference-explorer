@@ -528,6 +528,7 @@ function renderReplayAction() {
   // Completion retains guided ownership; it is not the ordinary Stop action.
   $('play').toggleAttribute('disabled', !journey.active || journey.journeyMode === 'MANUAL' || completed);
   $('stop-tour').hidden = !journey.active || completed;
+  $('explore-freely').hidden = !completed;
   $('complete-tour').hidden =
     !journey.active || completed || journey.journeyMode !== 'MANUAL' || state.position !== trace.length - 1;
   $('guidance-status').textContent = journeyStatus(journey);
@@ -881,8 +882,11 @@ document.addEventListener('click', (e) => {
       restartJourney();
       break;
     case 'stop-tour':
+    case 'explore-freely':
+      if (b.id === 'explore-freely' && !journey.completed) break;
+      // Release ownership and any pending focus without changing the current view.
       atlas?.cancelFocus();
-      updateJourney({ type: 'STOP' });
+      updateJourney({ type: b.id === 'explore-freely' ? 'EXPLORE' : 'STOP' });
       break;
     case 'complete-tour':
       if (journey.active && journey.journeyMode === 'MANUAL' && state.position === trace.length - 1)

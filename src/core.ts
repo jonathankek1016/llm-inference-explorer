@@ -16,7 +16,7 @@ export type JourneyAction =
   | { type: 'SET_MODE'; mode: JourneyMode }
   | { type: 'SET_SUSPENSION'; reason: JourneySuspension; suspended: boolean }
   | { type: 'NAVIGATE'; guidedFocus?: GuidedFocus }
-  | { type: 'START' | 'STOP' | 'COMPLETE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
+  | { type: 'START' | 'STOP' | 'COMPLETE' | 'EXPLORE' | 'PLAY' | 'PAUSE' | 'DETACH' | 'RESUME' };
 
 export function createJourneyControl(): JourneyControl {
   // Preserve the existing ready-to-play replay, without starting a timer on load.
@@ -63,6 +63,8 @@ export function transitionJourney(state: JourneyControl, action: JourneyAction):
         guidedFocus: action.guidedFocus ?? state.guidedFocus,
       };
     case 'STOP':
+    case 'EXPLORE':
+      if (action.type === 'EXPLORE' && !state.completed) return state;
       return { ...state, active: false, completed: false, playbackRequested: false, guidedFocus: 'TRACKING' };
     case 'COMPLETE':
       return state.active ? { ...state, completed: true, playbackRequested: false } : state;

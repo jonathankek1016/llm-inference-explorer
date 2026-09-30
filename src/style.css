@@ -1001,7 +1001,8 @@ svg {
 }
 #start-tour,
 #stop-tour,
-#complete-tour {
+#complete-tour,
+#explore-freely {
   font-size: 0.625rem;
   white-space: nowrap;
 }

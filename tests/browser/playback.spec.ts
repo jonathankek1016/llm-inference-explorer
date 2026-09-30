@@ -41,6 +41,115 @@ const particle = (page: Page) =>
     };
   });
 
+function expectCameraUnchanged(actual: Awaited<ReturnType<typeof readCamera>>, before: typeof actual) {
+  // OrbitControls may introduce machine-precision roundoff on an otherwise idle frame.
+  expect(actual.orthographic).toBe(before.orthographic);
+  expect(actual.zoom).toBeCloseTo(before.zoom, 10);
+  for (const key of ['position', 'target'] as const)
+    actual[key].forEach((value: number, index: number) => expect(value).toBeCloseTo(before[key][index], 10));
+}
+
+for (const selectedMode of ['AUTO', 'MANUAL'])
+  test(`${selectedMode} completed Explore freely keeps mode/view and restores existing free exploration`, async ({
+    page,
+  }) => {
+    await prepare(page);
+    await mode(page, selectedMode);
+    if (selectedMode === 'MANUAL') await page.locator('#theme').click();
+    await expect(page.locator('#explore-freely')).toBeHidden();
+    // An existing pin must survive completion and the return to free exploration.
+    await page.locator('.object-label[data-concept="router"]').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#start-tour').click();
+    await expect(page.locator('#explore-freely')).toBeHidden();
+    await page.locator('#timeline').fill('17');
+    if (selectedMode === 'AUTO') await page.clock.runFor(6200);
+    else {
+      await page.locator('#complete-tour').click();
+      await page.clock.runFor(1800);
+    }
+    await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
+    await expect(page.locator('.playback-top .journey-mode + #explore-freely')).toBeVisible();
+    await expect(page.locator('#replay')).toHaveText('Replay from start');
+    await expect(page.locator('#stop-tour')).toBeHidden();
+    await expect(page.locator('#complete-tour')).toBeHidden();
+    await expect(page.locator('#play')).toBeDisabled();
+    await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(1);
+    const before = await readCamera(page);
+    const context = () =>
+      page.evaluate(() => {
+        const s = (window as any).__playbackScene;
+        return { scene: s.sceneId, selected: s.selected, composition: s.composition.toArray() };
+      });
+    const view = await context();
+    await page
+      .locator('.playback')
+      .screenshot({ path: `artifacts/v3.1/part5-${selectedMode}-completed.png` });
+    await page.locator('#explore-freely').click();
+    await stage(page, 17);
+    await expect(page.locator('#journey-mode')).toHaveValue(selectedMode);
+    await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'false');
+    await expect(page.locator('#start-tour')).toBeVisible();
+    await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
+    await expect(page.locator('#explore-freely')).toBeHidden();
+    await expect(page.locator('#resume-focus')).toBeHidden();
+    await expect(page.locator('#play')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Replay from start', exact: true })).toHaveCount(0);
+    await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
+    await expect(page.locator('.world-callout[data-role="exploratory"][data-subject="router"]')).toHaveCount(
+      1,
+    );
+    expectCameraUnchanged(await readCamera(page), before);
+    expect(await context()).toEqual(view);
+    expect((await particle(page)).visible).toBe(false);
+    await page.clock.runFor(1800);
+    expectCameraUnchanged(await readCamera(page), before);
+    expect(await context()).toEqual(view);
+    expect(
+      await page.evaluate(() =>
+        (window as any).__playbackScene.emphasis.effects.every((e: any) => e.amount.value === 0),
+      ),
+    ).toBe(true);
+    expect((await particle(page)).visible).toBe(false);
+    await page
+      .locator('.playback')
+      .screenshot({ path: `artifacts/v3.1/part5-${selectedMode}-exploring.png` });
+    await page.locator('#start-tour').click();
+    await stage(page, 0);
+    await advancing(page, selectedMode === 'AUTO');
+    await expect(page.locator('#journey-mode')).toHaveValue(selectedMode);
+    await expect(page.locator('#explore-freely')).toBeHidden();
+  });
+
+test('Explore freely cancels an unfinished final guided transition without changing its current pose', async ({
+  page,
+}) => {
+  await prepare(page);
+  await mode(page, 'MANUAL');
+  await page.locator('#start-tour').click();
+  await page.locator('#timeline').fill('17');
+  const pose = await page.evaluate(() => {
+    const s = (window as any).__playbackScene;
+    document.getElementById('complete-tour')!.click();
+    const before = {
+      position: s.camera.position.toArray(),
+      target: s.controls.target.toArray(),
+      zoom: s.camera.zoom,
+      orthographic: s.camera.isOrthographicCamera,
+    };
+    const pending = !!s.panTarget;
+    document.getElementById('explore-freely')!.click();
+    return { before, pending, cancelled: !s.panTarget };
+  });
+  expect(pose.pending).toBe(true);
+  expect(pose.cancelled).toBe(true);
+  expectCameraUnchanged(await readCamera(page), pose.before);
+  await page.clock.runFor(1800);
+  expectCameraUnchanged(await readCamera(page), pose.before);
+  await stage(page, 17);
+  await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
+});
+
 test('Manual final stage offers immediate top-row Complete, preserving guided completion and ordinary Stop', async ({
   page,
 }) => {
