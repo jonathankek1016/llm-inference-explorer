@@ -36,6 +36,8 @@ import { ReadingHold, observeReading } from './reading-hold.ts';
 import { navigationFocus, readNavigationPreferences } from './navigation.ts';
 import { canSwitchWorkspace, demoCompatibilityHost, workspaces } from './workspace.ts';
 import type { WorkspaceId } from './workspace.ts';
+import { ExploreBrowser } from './explore.ts';
+import { categoryById, conceptRegistry, searchConceptRegistry } from './concept-registry.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -154,6 +156,7 @@ let config: ProviderConfig = {
   key: '',
 };
 $('app').innerHTML = shell;
+const explore = new ExploreBrowser($('explore-workspace'));
 $('app').dataset.workspace = workspace;
 $('demo-host').dataset.workspaceInstance = demoCompatibilityHost.instanceId;
 function switchWorkspace(destination: WorkspaceId) {
@@ -170,16 +173,17 @@ function switchWorkspace(destination: WorkspaceId) {
   // Retain dimensions, DOM, renderer and local state; do not trigger a camera refit.
   $('demo-host').inert = !demo;
   $('demo-host').setAttribute('aria-hidden', String(!demo));
-  for (const element of [$('scenario').parentElement!, $('search-open')]) {
+  for (const element of [$('scenario').parentElement!]) {
     element.inert = !demo;
     element.style.visibility = demo ? '' : 'hidden';
   }
-  $('workspace-scaffold').hidden = demo;
-  $('workspace-title').textContent = workspace === 'EXPLORE' ? 'Explore' : 'Live Lab';
+  $('search-open').inert = workspace === 'LIVE';
+  $('search-open').style.visibility = workspace === 'LIVE' ? 'hidden' : '';
+  $('explore-workspace').hidden = workspace !== 'EXPLORE';
+  $('workspace-scaffold').hidden = workspace !== 'LIVE';
+  $('workspace-title').textContent = 'Live Lab';
   $('workspace-description').textContent =
-    workspace === 'EXPLORE'
-      ? 'A reference atlas for understanding AI systems. Categorised concept browsing and reference navigation will arrive in a later development pass.'
-      : 'A dedicated workspace for real inputs and observable request evidence. The V4 Live Lab experience is not implemented yet.';
+    'A dedicated workspace for real inputs and observable request evidence. The V4 Live Lab experience is not implemented yet.';
   document.querySelectorAll<HTMLElement>('.workspace-nav [data-workspace]').forEach((button) => {
     if (button.dataset.workspace === workspace) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -826,15 +830,22 @@ function openSettings() {
 }
 function search() {
   const q = $<HTMLInputElement>('search-input').value.trim().toLowerCase(),
-    matches = Object.values(concepts).filter(
-      (c) => !q || `${c.title} ${c.short} ${c.id} ${c.category}`.toLowerCase().includes(q),
-    );
+    matches =
+      workspace === 'EXPLORE'
+        ? searchConceptRegistry(q).map((concept) => ({
+            id: concept.id,
+            title: concept.title,
+            scene: concept.anchor.scene,
+          }))
+        : Object.values(concepts).filter(
+            (c) => !q || `${c.title} ${c.short} ${c.id} ${c.category}`.toLowerCase().includes(q),
+          );
   $('search-results').innerHTML = matches.length
     ? matches
         .slice(0, 12)
         .map(
           (c) =>
-            `<button data-search-concept="${c.id}"><span class="search-result-icon">${icon('cube')}</span><span><strong>${c.title}</strong><small>${sceneNames[c.scene]}</small></span>${icon('next')}</button>`,
+            `<button data-search-concept="${c.id}"><span class="search-result-icon">${icon('cube')}</span><span><strong>${c.title}</strong><small>${workspace === 'EXPLORE' ? categoryById(conceptRegistry[c.id].categoryId)!.title : sceneNames[c.scene]}</small></span>${icon('next')}</button>`,
         )
         .join('')
     : '<p class="no-results">No concepts found. Try “attention”, “GPU”, “MLP” or “MCP”.</p>';
@@ -859,6 +870,10 @@ document.addEventListener('click', (e) => {
   }
   if (b.dataset.searchConcept) {
     $<HTMLDialogElement>('search-dialog').close();
+    if (workspace === 'EXPLORE') {
+      explore.openConcept(b.dataset.searchConcept);
+      return;
+    }
     selectConcept(b.dataset.searchConcept);
     showPanel('inspector');
   }
@@ -1120,7 +1135,22 @@ for (const id of ['settings-dialog', 'appearance-dialog']) {
 }
 document.addEventListener('keydown', (e) => {
   // Hidden compatibility-host shortcuts must not navigate or start a lesson.
-  if (workspace !== 'DEMO') return;
+  if (workspace !== 'DEMO') {
+    if (workspace === 'EXPLORE') {
+      if ((e.target as HTMLElement).id === 'search-input' && e.key === 'Enter') {
+        e.preventDefault();
+        document.querySelector<HTMLButtonElement>('[data-search-concept]')?.click();
+      } else if (
+        e.key === '/' &&
+        !(e.target as HTMLElement).matches('input, textarea, select') &&
+        !document.querySelector('dialog[open]')
+      ) {
+        e.preventDefault();
+        $('search-open').click();
+      }
+    }
+    return;
+  }
   if (e.key === 'Escape')
     document.querySelectorAll('.mobile-open').forEach((el) => el.classList.remove('mobile-open'));
   const activeTab = (e.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');

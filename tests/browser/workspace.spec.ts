@@ -53,14 +53,15 @@ test('inactive host survives root navigation; scaffolds own no replay and keyboa
   await page.clock.runFor(1800);
   const before = await snapshot(page);
   await root(page, 'EXPLORE').click();
-  await expect(page.locator('#workspace-title')).toHaveText('Explore');
+  await expect(page.locator('#explore-reference-title')).toHaveText('Explore');
   await expect(page.locator('#demo-host')).toHaveAttribute('inert', '');
   await expect(page.locator('.playback')).toBeHidden();
-  await page.locator('#workspace-title').click();
+  await page.locator('#explore-reference-title').click();
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press(' ');
   await page.keyboard.press('/');
-  await expect(page.locator('#search-dialog')).not.toBeVisible();
+  await expect(page.locator('#search-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
   await root(page, 'LIVE').click();
   await expect(page.locator('#workspace-title')).toHaveText('Live Lab');
   await page.getByRole('button', { name: 'Return to Demo Lab' }).click();
