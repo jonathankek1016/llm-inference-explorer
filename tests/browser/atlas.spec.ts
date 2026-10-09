@@ -94,7 +94,7 @@ test('mock live cancellation, clear, subsequent run and bounded history', async 
   await page.getByLabel('Model identifier', { exact: true }).fill('mock');
   await page.getByRole('button', { name: 'Save connection' }).click();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Chat mode', { exact: true }).selectOption('live');
+  await page.getByLabel('Request source', { exact: true }).selectOption('live');
   await page.getByRole('textbox', { name: 'Your message' }).fill('first');
   await page.getByRole('button', { name: 'Send request', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop request', exact: true })).toBeVisible();
@@ -310,7 +310,7 @@ test('mock live errors recover and streamed selected-token identity is visible',
   await page.getByLabel('Model identifier', { exact: true }).fill('mock');
   await page.getByRole('button', { name: 'Save connection' }).click();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Chat mode', { exact: true }).selectOption('live');
+  await page.getByLabel('Request source', { exact: true }).selectOption('live');
   await page.getByRole('textbox', { name: 'Your message' }).fill('first');
   await page.getByRole('button', { name: 'Send request', exact: true }).click();
   await expect(page.locator('#request-status')).toContainText('Error: 401');

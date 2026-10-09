@@ -468,7 +468,7 @@ test('an active Live stream continues while current-subject Reading Hold suspend
   await page.getByLabel('Request streaming', { exact: true }).check();
   await page.getByRole('button', { name: 'Save connection', exact: true }).click();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Chat mode', { exact: true }).selectOption('live');
+  await page.getByLabel('Request source', { exact: true }).selectOption('live');
   await page.getByRole('textbox', { name: 'Your message', exact: true }).fill('Keep this request running.');
   await page.getByRole('button', { name: 'Send request', exact: true }).click();
   await expect(page.locator('.message.assistant p')).toHaveText('First chunk.');

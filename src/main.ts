@@ -34,6 +34,8 @@ import type { FramingRegistry } from './framing.ts';
 import type { CalibrationPanel } from './calibration.ts';
 import { ReadingHold, observeReading } from './reading-hold.ts';
 import { navigationFocus, readNavigationPreferences } from './navigation.ts';
+import { canSwitchWorkspace, demoCompatibilityHost, workspaces } from './workspace.ts';
+import type { WorkspaceId } from './workspace.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -70,6 +72,7 @@ const state = {
   dark: read<string>('atlas-theme', 'light') === 'dark',
 };
 let journey = createJourneyControl();
+let workspace: WorkspaceId = demoCompatibilityHost.workspace;
 let navigationPreferences = readNavigationPreferences(read<unknown>('atlas-navigation', null));
 let exploratoryCallouts: ExplorationCallout[] = [];
 const explorationViews = new Map<
@@ -151,6 +154,39 @@ let config: ProviderConfig = {
   key: '',
 };
 $('app').innerHTML = shell;
+$('app').dataset.workspace = workspace;
+$('demo-host').dataset.workspaceInstance = demoCompatibilityHost.instanceId;
+function switchWorkspace(destination: WorkspaceId) {
+  if (!canSwitchWorkspace(workspace, destination, journey)) {
+    toast(
+      'Stay in Demo Lab until this journey is stopped or completed. Cross-workspace browsing during a journey is coming in a later update.',
+    );
+    return;
+  }
+  const returningFromScaffold = !!document.activeElement?.closest('#workspace-scaffold');
+  workspace = destination;
+  $('app').dataset.workspace = workspace;
+  const demo = workspace === 'DEMO';
+  // Retain dimensions, DOM, renderer and local state; do not trigger a camera refit.
+  $('demo-host').inert = !demo;
+  $('demo-host').setAttribute('aria-hidden', String(!demo));
+  for (const element of [$('scenario').parentElement!, $('search-open')]) {
+    element.inert = !demo;
+    element.style.visibility = demo ? '' : 'hidden';
+  }
+  $('workspace-scaffold').hidden = demo;
+  $('workspace-title').textContent = workspace === 'EXPLORE' ? 'Explore' : 'Live Lab';
+  $('workspace-description').textContent =
+    workspace === 'EXPLORE'
+      ? 'A reference atlas for understanding AI systems. Categorised concept browsing and reference navigation will arrive in a later development pass.'
+      : 'A dedicated workspace for real inputs and observable request evidence. The V4 Live Lab experience is not implemented yet.';
+  document.querySelectorAll<HTMLElement>('.workspace-nav [data-workspace]').forEach((button) => {
+    if (button.dataset.workspace === workspace) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  if (returningFromScaffold)
+    document.querySelector<HTMLElement>(`.workspace-nav [data-workspace="${workspace}"]`)?.focus();
+}
 const readingHold = new ReadingHold((suspended) =>
   updateJourney({ type: 'SET_SUSPENSION', reason: 'READING_HOLD', suspended }),
 );
@@ -806,6 +842,14 @@ function search() {
 document.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('button, a');
   if (!b) return;
+  if (b.dataset.workspace && workspaces.some(({ id }) => id === b.dataset.workspace)) {
+    switchWorkspace(b.dataset.workspace as WorkspaceId);
+    return;
+  }
+  if (workspace !== 'DEMO' && (b.id === 'home' || b.closest('#demo-host'))) {
+    e.preventDefault();
+    return;
+  }
   if (b.classList.contains('object-label')) return;
   if (b.dataset.close) $<HTMLDialogElement>(b.dataset.close).close();
   if (b.dataset.scene) goScene(b.dataset.scene as SceneId);
@@ -1075,6 +1119,8 @@ for (const id of ['settings-dialog', 'appearance-dialog']) {
   });
 }
 document.addEventListener('keydown', (e) => {
+  // Hidden compatibility-host shortcuts must not navigate or start a lesson.
+  if (workspace !== 'DEMO') return;
   if (e.key === 'Escape')
     document.querySelectorAll('.mobile-open').forEach((el) => el.classList.remove('mobile-open'));
   const activeTab = (e.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');

@@ -2976,3 +2976,66 @@ select option {
     gap: 0.2rem;
   }
 }
+
+/* V4 root shell. The single Demo host stays mounted at its original dimensions. */
+.workspace-nav {
+  position: absolute;
+  left: var(--margin);
+  top: 5rem;
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid var(--mica-border);
+  border-radius: 0.6rem;
+  background: var(--mica);
+  pointer-events: auto;
+}
+.workspace-nav button {
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.4rem;
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+.workspace-nav button[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
+}
+#demo-host[aria-hidden='true'] {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.workspace-scaffold {
+  position: absolute;
+  top: 11rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(34rem, calc(100% - 2rem));
+  padding: 2rem;
+}
+.workspace-scaffold h1 {
+  margin: 0.7rem 0;
+}
+.workspace-scaffold p {
+  line-height: 1.7;
+  margin: 1rem 0;
+}
+.request-source {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.5625rem;
+  color: var(--muted);
+}
+@media (max-width: 980px) {
+  .workspace-nav {
+    top: calc(var(--masthead-height) - 0.1rem);
+  }
+  .scene-intro {
+    top: calc(var(--masthead-height) + 2.3rem);
+  }
+  .workspace-scaffold {
+    top: calc(var(--masthead-height) + 3rem);
+    padding: 1.25rem;
+  }
+}
