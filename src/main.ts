@@ -39,6 +39,7 @@ import type { WorkspaceId, NavigationIntent, GuidedSessionId } from './workspace
 import { GuidedSessions, isIncompleteJourney } from './guided-session.ts';
 import type { SessionOwner } from './guided-session.ts';
 import { ExploreBrowser } from './explore.ts';
+import { ExploreAtlas } from './explore-scene.ts';
 import { categoryById, conceptRegistry, searchConceptRegistry } from './concept-registry.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -173,6 +174,35 @@ let config: ProviderConfig = {
 };
 $('app').innerHTML = shell;
 const explore = new ExploreBrowser($('explore-workspace'));
+let exploreAtlas: ExploreAtlas | undefined;
+let sceneClass: typeof AtlasScene | undefined;
+function showWorkspaceVisuals() {
+  atlas?.setVisible(workspace === 'DEMO');
+  if (workspace === 'EXPLORE' && sceneClass && !exploreAtlas) {
+    try {
+      exploreAtlas = new ExploreAtlas(sceneClass, $('explore-workspace'), explore, exploreFallback);
+      exploreAtlas.scene.setDark(state.dark);
+      exploreAtlas.scene.setGrid(groundGrid);
+      exploreAtlas.scene.setGridIntensity(gridIntensity);
+      exploreAtlas.scene.setPalette(appearance);
+    } catch {
+      exploreFallback();
+    }
+  }
+  exploreAtlas?.setVisible(workspace === 'EXPLORE');
+}
+function exploreFallback() {
+  exploreAtlas?.dispose();
+  exploreAtlas = undefined;
+  document
+    .querySelectorAll<HTMLButtonElement | HTMLSelectElement>('.explore-view-controls button, #explore-view')
+    .forEach((control) => {
+      control.disabled = true;
+    });
+  $('explore-view-note').textContent =
+    '3D is unavailable. Contents, search and the full reference remain available.';
+}
+
 $('app').dataset.workspace = workspace;
 $('demo-host').dataset.workspaceInstance = demoCompatibilityHost.instanceId;
 function switchWorkspace(destination: WorkspaceId) {
@@ -191,6 +221,7 @@ function switchWorkspace(destination: WorkspaceId) {
   $('search-open').style.visibility = workspace === 'LIVE' ? 'hidden' : '';
   $('explore-workspace').hidden = workspace !== 'EXPLORE';
   $('workspace-scaffold').hidden = workspace !== 'LIVE';
+  showWorkspaceVisuals();
   $('workspace-title').textContent = 'Live Lab';
   $('workspace-description').textContent =
     'A dedicated workspace for real inputs and observable request evidence. The V4 Live Lab experience is not implemented yet.';
@@ -288,6 +319,7 @@ function applyAppearance() {
   applyThemeTokens();
   document.documentElement.dataset.palette = appearance.palette;
   atlas?.setPalette(appearance);
+  exploreAtlas?.scene.setPalette(appearance);
   save('atlas-appearance', appearance);
   document.querySelectorAll<HTMLInputElement>('input[name="palette"]').forEach((input) => {
     input.checked = input.value === appearance.palette;
@@ -940,7 +972,7 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     return;
   }
-  if (b.classList.contains('object-label')) return;
+  if (b.closest('#explore-workspace') || b.classList.contains('object-label')) return;
   if (b.dataset.close) $<HTMLDialogElement>(b.dataset.close).close();
   if (b.dataset.scene) goScene(b.dataset.scene as SceneId);
   if (b.dataset.concept) selectConcept(b.dataset.concept);
@@ -980,6 +1012,7 @@ document.addEventListener('click', (e) => {
       document.documentElement.dataset.theme = state.dark ? 'dark' : 'light';
       save('atlas-theme', state.dark ? 'dark' : 'light');
       atlas?.setDark(state.dark);
+      exploreAtlas?.scene.setDark(state.dark);
       applyAppearance();
       renderDarkPreference();
       b.setAttribute('aria-label', state.dark ? 'Toggle light theme' : 'Toggle dark theme');
@@ -1331,12 +1364,14 @@ $('ground-grid').addEventListener('change', () => {
   groundGrid = $<HTMLInputElement>('ground-grid').checked;
   save('atlas-ground-grid', groundGrid);
   atlas?.setGrid(groundGrid);
+  exploreAtlas?.scene.setGrid(groundGrid);
   renderGridPreference();
 });
 intensityControl.addEventListener('input', () => {
   gridIntensity = Number(intensityControl.value);
   save('atlas-grid-intensity', gridIntensity);
   atlas?.setGridIntensity(gridIntensity);
+  exploreAtlas?.scene.setGridIntensity(gridIntensity);
   renderGridPreference();
 });
 const darkControl = $<HTMLInputElement>('dark-appearance');
@@ -1393,6 +1428,7 @@ function fallback() {
 }
 import('./scene.ts')
   .then(({ AtlasScene: Scene }) => {
+    sceneClass = Scene;
     $('viewport').replaceChildren();
     try {
       atlas = new Scene(
@@ -1420,6 +1456,7 @@ import('./scene.ts')
       atlas.setSelected(state.selected);
       renderJourneyControl();
       focusJourneySubject();
+      showWorkspaceVisuals();
       if (import.meta.env.DEV && new URLSearchParams(location.search).get('calibrate') === '1') {
         void import('./calibration.ts').then(({ CalibrationPanel }) => {
           calibration = new CalibrationPanel({
@@ -1465,5 +1502,6 @@ window.addEventListener('pagehide', () => {
   panelObserver.disconnect();
   gate.cancel();
   atlas?.dispose();
+  exploreAtlas?.dispose();
 });
 if (legacyNotice) toast('The old saved API key was removed. Re-enter it in Settings to use live mode.');

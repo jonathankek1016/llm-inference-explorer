@@ -2,6 +2,13 @@ import { placeCallout, relieveCalloutCrowding } from './callouts.ts';
 import type { Callout, CalloutBounds, CalloutRect, ScreenPoint } from './callouts.ts';
 import type { SceneId } from './content.ts';
 
+export interface CalloutLayerOptions {
+  bounds?: () => CalloutBounds;
+  labelRoot?: ParentNode;
+  namespace?: string;
+  panels?: HTMLElement[];
+}
+
 type CardView = { card: HTMLElement; line: SVGLineElement; content: string; model: Callout };
 
 /** A keyed DOM layer. The renderer owns projection; this layer never writes camera state.
@@ -20,6 +27,7 @@ export class CalloutLayer {
     parent: HTMLElement,
     private onClose: (concept: string) => void,
     private onInspect: (concept: string) => void,
+    private options: CalloutLayerOptions = {},
   ) {
     this.element.className = 'callout-layer';
     this.element.setAttribute('aria-label', 'World annotations');
@@ -30,8 +38,8 @@ export class CalloutLayer {
     this.resize = new ResizeObserver(() => this.refresh?.());
     this.resize.observe(parent);
     this.panels = new MutationObserver(() => this.refresh?.());
-    for (const id of ['journey-panel', 'inspector-panel']) {
-      const panel = document.getElementById(id)!;
+    for (const panel of options.panels ??
+      ['journey-panel', 'inspector-panel'].map((id) => document.getElementById(id)!)) {
       this.panels.observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
       this.resize.observe(panel);
     }
@@ -65,7 +73,7 @@ export class CalloutLayer {
             const id = this.views.get(model.id)!.model.conceptId;
             this.onClose(id);
             // Return keyboard focus to the corresponding selectable world label.
-            document
+            (this.options.labelRoot ?? document)
               .querySelector<HTMLButtonElement>(`.object-label[data-concept="${id}"]`)
               ?.focus({ preventScroll: true });
           } else if (action === 'inspect') this.onInspect(this.views.get(model.id)!.model.conceptId);
@@ -96,7 +104,7 @@ export class CalloutLayer {
           header.append(close);
         }
         const title = document.createElement('h2');
-        title.id = `callout-title-${model.id}`;
+        title.id = `callout-title-${this.options.namespace ?? ''}${model.id}`;
         title.textContent = model.title;
         view.card.setAttribute('aria-labelledby', title.id);
         const summary = document.createElement('p');
@@ -166,6 +174,7 @@ export class CalloutLayer {
   }
 
   private bounds(): CalloutBounds {
+    if (this.options.bounds) return this.options.bounds();
     const origin = this.element.getBoundingClientRect();
     const intro = document.querySelector('.scene-intro')!.getBoundingClientRect();
     const replay = document.querySelector('.playback')!.getBoundingClientRect();

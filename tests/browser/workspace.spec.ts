@@ -34,7 +34,7 @@ const snapshot = (page: Page) =>
       journey: { ...document.querySelector<HTMLElement>('.playback')!.dataset },
       intent: document.getElementById('play')!.getAttribute('aria-label'),
       source: (document.getElementById('mode') as HTMLSelectElement).value,
-      cards: [...document.querySelectorAll('.world-callout')].map((e) => [
+      cards: [...document.querySelectorAll('#demo-host .world-callout')].map((e) => [
         e.getAttribute('data-subject'),
         e.getAttribute('data-role'),
       ]),

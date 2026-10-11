@@ -10,6 +10,8 @@ import { defaultGridIntensity, gridOpacity } from './grid.ts';
 import { focusEase, resolveGuidedFraming } from './camera.ts';
 import type { FocusFraming } from './camera.ts';
 import { CalloutLayer } from './callout-layer.ts';
+import type { CalloutLayerOptions } from './callout-layer.ts';
+import { observeSceneFrames } from './scene-loop.ts';
 import type { Callout } from './callouts.ts';
 import { resolveComposition, resolveFramingProfile } from './framing.ts';
 import type { Point3 } from './framing.ts';
@@ -88,6 +90,12 @@ export function landscapeCanvas(refinement = 1): HTMLCanvasElement {
   return canvas;
 }
 
+export interface AtlasSceneOptions {
+  framing?: HTMLElement;
+  annotations?: CalloutLayerOptions;
+  accessibleLabel?: string;
+}
+
 export class AtlasScene {
   renderer: T.WebGLRenderer;
   scene = new T.Scene();
@@ -109,7 +117,8 @@ export class AtlasScene {
   reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   dirty = true;
   private observer: ResizeObserver;
-  private raf = 0;
+  private stopFrames: () => void;
+  private visible = true;
   private targetZoom = 1;
   private panTarget?: T.Vector3;
   private directionTarget?: T.Vector3;
@@ -147,10 +156,11 @@ export class AtlasScene {
     onSelect: (id: string) => void,
     onManual: (kind: 'pan' | 'zoom') => void,
     onFailure: () => void,
+    private options: AtlasSceneOptions = {},
   ) {
     this.selectedCallback = onSelect;
     this.manualCallback = onManual;
-    this.framing = document.getElementById('scene-framing')!;
+    this.framing = options.framing ?? document.getElementById('scene-framing')!;
     this.renderer = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
     this.renderer.shadowMap.enabled = true;
@@ -159,7 +169,8 @@ export class AtlasScene {
     this.renderer.outputColorSpace = T.SRGBColorSpace;
     this.renderer.domElement.setAttribute(
       'aria-label',
-      'Interactive 3D atlas. Use the journey list or object labels to select concepts.',
+      options.accessibleLabel ??
+        'Interactive 3D atlas. Use the journey list or object labels to select concepts.',
     );
     this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
@@ -279,7 +290,7 @@ export class AtlasScene {
     this.observer.observe(this.framing);
     this.build('world');
     this.resize();
-    this.animate(0);
+    this.stopFrames = observeSceneFrames(this.animate);
   }
   material(colour: string, metalness = 0.08) {
     const key = colour + metalness;
@@ -869,7 +880,10 @@ export class AtlasScene {
   ) {
     this.calloutModels = models;
     this.updateEmphasisOwners();
-    this.callouts ??= new CalloutLayer(this.container.parentElement!, onClose, onInspect);
+    this.callouts ??= new CalloutLayer(this.container.parentElement!, onClose, onInspect, {
+      labelRoot: this.container,
+      ...this.options.annotations,
+    });
     this.callouts.setModels(models);
     this.projectCallouts();
   }
@@ -992,7 +1006,15 @@ export class AtlasScene {
     this.controls.update();
     this.dirty = true;
   }
+  /** Visibility changes drawing ownership, never teaching flow or particle phase. */
+  setVisible(visible: boolean) {
+    this.visible = visible;
+    this.controls.enabled = visible;
+    if (visible) this.resize();
+    this.dirty = true;
+  }
   resize() {
+    if (!this.visible) return;
     const width = this.container.clientWidth,
       height = this.container.clientHeight;
     if (!width || !height) return;
@@ -1046,11 +1068,10 @@ export class AtlasScene {
     }
   };
   private animate = (time: number) => {
-    this.raf = requestAnimationFrame(this.animate);
     if (document.hidden) return;
     const dt = Math.max(0, Math.min((time - this.lastTime) / 1000, 0.1));
     this.lastTime = time;
-    if (this.panTarget && !this.userControlling && !this.presentationSuspended) {
+    if (this.visible && this.panTarget && !this.userControlling && !this.presentationSuspended) {
       const fraction = focusEase(dt, this.reduced),
         offset = this.camera.position.clone().sub(this.controls.target),
         delta = this.panTarget.clone().sub(this.controls.target).multiplyScalar(fraction);
@@ -1071,7 +1092,7 @@ export class AtlasScene {
     }
     if (!this.presentationSuspended) {
       if (this.emphasis.update(dt, this.reduced)) this.dirty = true;
-      this.controls.update();
+      if (this.visible) this.controls.update();
     }
     if (!this.flowSuspended || !this.flowActive)
       this.packet.visible = this.flowActive && !this.reduced && this.paths.length > 0;
@@ -1093,7 +1114,7 @@ export class AtlasScene {
       this.packet.position.y += 0.06;
       this.dirty = true;
     }
-    if (!this.dirty) return;
+    if (!this.visible || !this.dirty) return;
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
     this.projectCallouts();
@@ -1141,7 +1162,7 @@ export class AtlasScene {
   }
   dispose() {
     this.callouts?.dispose();
-    cancelAnimationFrame(this.raf);
+    this.stopFrames();
     this.observer.disconnect();
     this.controls.dispose();
     this.disposeRoot();

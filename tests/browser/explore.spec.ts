@@ -34,7 +34,7 @@ async function demoState(page: Page) {
       intent: document.getElementById('play')!.getAttribute('aria-label'),
       requestMode: (document.getElementById('mode') as HTMLSelectElement).value,
       renderer: scene.renderer.domElement === document.querySelector('#viewport canvas'),
-      pins: [...document.querySelectorAll('.world-callout')].map((card) => [
+      pins: [...document.querySelectorAll('#demo-host .world-callout')].map((card) => [
         card.getAttribute('data-subject'),
         card.getAttribute('data-role'),
       ]),
@@ -53,7 +53,7 @@ test('hierarchy, reference, related concepts and sources stay within Explore and
   await root(page, 'EXPLORE').click();
   await expect(page.locator('#explore-reference-title')).toHaveText('Explore');
   await expect(page.getByRole('tab', { name: 'Journey', exact: true })).toHaveCount(0);
-  await expect(page.locator('#explore-workspace canvas')).toHaveCount(0);
+  await expect(page.locator('#explore-workspace canvas')).toBeVisible();
   await expect(page.locator('.playback')).toBeHidden();
   await expect(page.locator('.explore-category-list > button')).toHaveCount(9);
   await category(page, 'model').click();
@@ -141,7 +141,7 @@ for (const width of [1440, 820, 390])
     for (const theme of ['light', 'dark']) {
       if (theme === 'dark') await page.locator('#theme').click();
       await page.locator('.explore-breadcrumbs [data-explore-category="all"]').click();
-      await page.screenshot({ path: `artifacts/v4/part2-${width}-${theme}-contents.png` });
+      await page.screenshot({ path: `artifacts/v4/part4-${width}-${theme}-contents.png` });
       await category(page, 'network').click();
       await concept(page, 'router').click();
       await expect(page.locator('#explore-reference-title')).toBeInViewport();
@@ -153,6 +153,6 @@ for (const width of [1440, 820, 390])
         .locator('#explore-workspace')
         .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
       expect(overflowing).toBe(false);
-      await page.screenshot({ path: `artifacts/v4/part2-${width}-${theme}-reference.png` });
+      await page.screenshot({ path: `artifacts/v4/part4-${width}-${theme}-reference.png` });
     }
   });

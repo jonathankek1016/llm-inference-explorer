@@ -35,7 +35,8 @@ for (const mode of ['AUTO', 'MANUAL'])
     await expect(page.locator('#global-session-label')).toContainText('Demo Lab · Session parked');
     await expect(page.locator('.playback')).toBeHidden();
     await expect(page.locator('#demo-host')).toHaveAttribute('aria-hidden', 'true');
-    await expect(page.locator('#explore-workspace canvas, #explore-workspace .world-callout')).toHaveCount(0);
+    await expect(page.locator('#explore-workspace canvas')).toBeVisible();
+    await expect(page.locator('#explore-workspace .world-callout[data-role="guided"]')).toHaveCount(0);
     await page.locator('#search-open').click();
     await page.locator('#search-input').fill('KV cache');
     await page.keyboard.press('Enter');

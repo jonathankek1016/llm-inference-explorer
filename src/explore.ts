@@ -7,6 +7,7 @@ import {
   exploreReference,
   referenceSources,
 } from './concept-registry.ts';
+import { exploreRooms } from './workspace-state.ts';
 import type { CategoryId } from './concept-registry.ts';
 
 export interface ExploreState {
@@ -39,12 +40,35 @@ const escape = (text: string) =>
 const conceptLink = (id: string, current: string | null = null) =>
   `<button data-explore-concept="${escape(id)}" ${id === current ? 'aria-current="page"' : ''}>${escape(conceptRegistry[id].title)}<span aria-hidden="true">↗</span></button>`;
 
-/** Local reference browser only: no journey, renderer, request or Demo callbacks. */
+/** Canonical reference state, independent of Demo and global guided sessions. */
 export class ExploreBrowser {
   private state = initialExploreState();
+  onNavigate?: (state: ExploreState) => void;
+  private referenceScroll = new Map<string, number>();
+  private referenceKey() {
+    return this.state.conceptId ? `concept:${this.state.conceptId}` : `category:${this.state.categoryId}`;
+  }
+  get selection(): Readonly<ExploreState> {
+    return this.state;
+  }
   private readonly host: HTMLElement;
   constructor(host: HTMLElement) {
     this.host = host;
+    // Stable mounts: browsing reference content must never reconstruct the viewport.
+    host.innerHTML = `<aside class="explore-contents panel" aria-label="Explore contents"></aside>
+      <section class="explore-atlas" aria-label="Explore 3D atlas">
+        <div class="explore-view-controls">
+          <label>Atlas view <select id="explore-view" aria-label="Explore atlas view">${exploreRooms.map((room) => `<option value="${room.scene}">${room.title}</option>`).join('')}</select></label>
+          <div role="group" aria-label="Explore camera tools">
+            <button id="explore-reset" title="Reset Explore view">Reset</button>
+            <button id="explore-focus" disabled>Focus</button>
+            <button id="explore-labels" aria-pressed="true">Labels</button>
+          </div>
+        </div>
+        <div class="explore-stage"><div id="explore-viewport" class="viewport"></div></div>
+        <p id="explore-view-note" class="small" role="status">Drag to orbit · Scroll to zoom · Right-drag to pan</p>
+      </section>
+      <article class="explore-reference panel" aria-labelledby="explore-reference-title"></article>`;
     host.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>('button');
       if (button?.dataset.exploreCategory) this.navigate({ categoryId: button.dataset.exploreCategory });
@@ -55,17 +79,24 @@ export class ExploreBrowser {
   openConcept(id: string) {
     this.navigate({ conceptId: id });
   }
+  openCategory(id: string) {
+    this.navigate({ categoryId: id });
+  }
   private navigate(destination: ExploreDestination) {
     const next = navigateExplore(this.state, destination);
     if (next === this.state) return;
+    const reference = this.host.querySelector<HTMLElement>('.explore-reference')!;
+    this.referenceScroll.set(this.referenceKey(), reference.scrollTop);
     this.state = next;
     this.render();
+    reference.scrollTop = this.referenceScroll.get(this.referenceKey()) ?? 0;
+    this.onNavigate?.(this.state);
     const heading = this.host.querySelector<HTMLElement>(
       'conceptId' in destination ? '#explore-reference-title' : '#explore-contents-title',
     )!;
     if ('categoryId' in destination) this.host.scrollTop = 0;
     heading.focus({ preventScroll: true });
-    heading.scrollIntoView({ block: 'nearest' });
+    if (matchMedia('(max-width: 980px)').matches) heading.scrollIntoView({ block: 'nearest' });
   }
   private render() {
     const { categoryId, conceptId } = this.state;
@@ -80,8 +111,7 @@ export class ExploreBrowser {
       const count = categoryConceptCount(id);
       return `<button data-explore-category="${id}"><span>${escape(item.title)}</span><small>${count ? `${count} concepts` : 'Not yet populated'}</small></button>`;
     };
-    this.host.innerHTML = `
-      <aside class="explore-contents panel" aria-label="Explore contents">
+    this.host.querySelector('.explore-contents')!.innerHTML = `
         <span class="eyebrow">REFERENCE ATLAS</span><h2 id="explore-contents-title" tabindex="-1">Explore</h2>
         <p class="small">Browse concepts at your own pace.</p>
         <nav aria-label="Explore categories">
@@ -91,8 +121,8 @@ export class ExploreBrowser {
           ${category.concepts.length ? `<h3>Concepts</h3><div class="explore-concept-list">${category.concepts.map((id) => conceptLink(id, conceptId)).join('')}</div>` : ''}
           ${!categoryConceptCount(categoryId) ? '<p class="small">No reference entries yet. This area is reserved for future content.</p>' : ''}
         </nav>
-      </aside>
-      <article class="explore-reference panel" aria-labelledby="explore-reference-title">
+      `;
+    this.host.querySelector('.explore-reference')!.innerHTML = `
         <nav class="explore-breadcrumbs" aria-label="Explore breadcrumbs">${path
           .map(
             (item, i) =>
@@ -108,12 +138,12 @@ export class ExploreBrowser {
             ? this.reference(concept.id)
             : `
           <p>${categoryConceptCount(categoryId) ? `Browse ${categoryConceptCount(categoryId)} supported concepts${categoryId === 'all' ? ' across the atlas' : ' in this area'}. Choose a category or concept from Contents, or use Find a concept.` : 'Reference material for this area has not been added yet.'}</p>
-          <p class="explore-note">This is the reference library. The free 3D atlas view will arrive in a later update.</p>
+          <p class="explore-note">Browse the atlas alongside this reference. Areas without models remain available as reference categories.</p>
           ${children.length ? `<div class="explore-category-cards">${children.map((child) => categoryButton(child.id)).join('')}</div>` : ''}
           ${category.concepts.length ? `<div class="explore-reference-links">${category.concepts.map((id) => conceptLink(id)).join('')}</div>` : ''}
         `
         }
-      </article>`;
+      `;
   }
   private reference(id: string): string {
     const concept = conceptRegistry[id];
