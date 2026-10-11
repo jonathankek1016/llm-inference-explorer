@@ -53,10 +53,10 @@ test('inactive host survives root navigation; scaffolds own no replay and keyboa
   await page.clock.runFor(1800);
   const before = await snapshot(page);
   await root(page, 'EXPLORE').click();
-  await expect(page.locator('#explore-reference-title')).toHaveText('Explore');
+  await expect(page.locator('#explore-gallery-title')).toHaveText('The concept atlas');
   await expect(page.locator('#demo-host')).toHaveAttribute('inert', '');
   await expect(page.locator('.playback')).toBeHidden();
-  await page.locator('#explore-reference-title').click();
+  await page.locator('#explore-contents-title').click();
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press(' ');
   await page.keyboard.press('/');

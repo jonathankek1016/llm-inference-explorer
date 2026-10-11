@@ -1,6 +1,5 @@
 import { placeCallout, relieveCalloutCrowding } from './callouts.ts';
 import type { Callout, CalloutBounds, CalloutRect, ScreenPoint } from './callouts.ts';
-import type { SceneId } from './content.ts';
 
 export interface CalloutLayerOptions {
   bounds?: () => CalloutBounds;
@@ -9,7 +8,7 @@ export interface CalloutLayerOptions {
   panels?: HTMLElement[];
 }
 
-type CardView = { card: HTMLElement; line: SVGLineElement; content: string; model: Callout };
+type CardView = { card: HTMLElement; line: SVGLineElement; content: string; model: Callout<string> };
 
 /** A keyed DOM layer. The renderer owns projection; this layer never writes camera state.
  * Card roots persist across projection, suspension and view changes. Future reading
@@ -45,7 +44,7 @@ export class CalloutLayer {
     }
   }
 
-  setModels(models: readonly Callout[]) {
+  setModels(models: readonly Callout<string>[]) {
     for (const [id, view] of this.views) {
       if (!models.some((model) => model.id === id)) {
         this.resize.unobserve(view.card);
@@ -126,7 +125,7 @@ export class CalloutLayer {
     this.refresh?.();
   }
 
-  project(scene: SceneId, resolve: (concept: string) => ScreenPoint | undefined) {
+  project(scene: string, resolve: (concept: string) => ScreenPoint | undefined) {
     this.refresh = () => this.project(scene, resolve);
     const bounds = this.bounds();
     const occupied: CalloutRect[] = [];

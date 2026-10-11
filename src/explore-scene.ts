@@ -1,14 +1,10 @@
 import type { AtlasScene } from './scene.ts';
 import type { ExploreBrowser, ExploreState } from './explore.ts';
-import type { SceneId } from './content.ts';
 import { conceptRegistry } from './concept-registry.ts';
 import { openCallout } from './callouts.ts';
-import {
-  createExplorePresentation,
-  exploreCategoryScene,
-  exploreConceptScene,
-  exploreRooms,
-} from './workspace-state.ts';
+import { createExplorePresentation } from './workspace-state.ts';
+import { categoryGallery, conceptGallery, exploreGalleries } from './explore-catalogue.ts';
+import type { ExploreCategoryView } from './explore-catalogue.ts';
 
 /** Explore owns only visual/reference state. It has no journey or session port. */
 export class ExploreAtlas {
@@ -24,26 +20,34 @@ export class ExploreAtlas {
     this.host = host;
     this.browser = browser;
     const viewport = host.querySelector<HTMLElement>('#explore-viewport')!;
-    const stage = viewport.parentElement!;
+    const framing = host.querySelector<HTMLElement>('#explore-framing')!;
     this.scene = new Scene(
       viewport,
       (id) => this.inspectSpatial(id),
       () => {},
       failure,
       {
-        framing: viewport,
+        framing,
+        gallery: exploreGalleries[0],
         accessibleLabel:
           'Explore 3D atlas. Orbit, pan and zoom freely. Use Contents or object labels to select concepts.',
         annotations: {
           namespace: 'explore-',
           labelRoot: viewport,
-          panels: [],
-          bounds: () => ({
-            left: 12,
-            top: 12,
-            right: stage.clientWidth - 12,
-            bottom: stage.clientHeight - 12,
-          }),
+          panels: [...host.querySelectorAll<HTMLElement>('.explore-contents, .explore-reference')],
+          bounds: () => {
+            // The full canvas includes floating panels; keep desktop cards in the
+            // same clear area used for framing, without changing crowding rules.
+            const frame = framing.getBoundingClientRect();
+            const origin = viewport.getBoundingClientRect();
+            const tools = host.querySelector('.explore-view-controls')!.getBoundingClientRect();
+            return {
+              left: Math.max(12, frame.left - origin.left),
+              right: Math.min(origin.width - 12, frame.right - origin.left),
+              top: frame.top - origin.top,
+              bottom: tools.top - origin.top - 16,
+            };
+          },
         },
       },
     );
@@ -68,7 +72,7 @@ export class ExploreAtlas {
     };
     this.viewChange = () => {
       const view = host.querySelector<HTMLSelectElement>('#explore-view')!.value;
-      browser.openCategory(exploreRooms.find((room) => room.scene === view)!.category);
+      browser.openCategory(exploreGalleries.find((gallery) => gallery.id === view)!.categoryId);
     };
     host.addEventListener('click', this.toolbarClick);
     host.querySelector('#explore-view')!.addEventListener('change', this.viewChange);
@@ -77,7 +81,7 @@ export class ExploreAtlas {
   }
 
   private inspectSpatial(id: string) {
-    // Cache occurs in two views. Spatial selection must stay in the clicked view.
+    // Shared exhibits may appear in several galleries; stay in the clicked gallery.
     this.spatialSelection = true;
     try {
       this.browser.openConcept(id);
@@ -86,36 +90,39 @@ export class ExploreAtlas {
     }
   }
 
-  private showScene(scene: SceneId) {
-    if (scene === this.presentation.scene) return;
-    this.presentation.views.set(this.presentation.scene, this.scene.captureView());
-    this.presentation.scene = scene;
-    this.scene.setScene(scene);
+  private showScene(view: ExploreCategoryView) {
+    if (view.id === this.presentation.gallery) return;
+    this.presentation.views.set(this.presentation.gallery, this.scene.captureView());
+    this.presentation.gallery = view.id;
+    this.scene.setGallery(view);
     this.scene.resize();
-    const remembered = this.presentation.views.get(scene);
+    const remembered = this.presentation.views.get(view.id);
     if (remembered) this.scene.restoreView(remembered);
   }
 
   private navigate(state: Readonly<ExploreState>) {
-    const target = state.conceptId
-      ? exploreConceptScene(state.conceptId)
-      : exploreCategoryScene(state.categoryId);
+    const target = state.conceptId ? conceptGallery(state.conceptId) : categoryGallery(state.categoryId);
     if (target && !this.spatialSelection) this.showScene(target);
     const represented = !!state.conceptId && this.scene.nodes.some((node) => node.id === state.conceptId);
     this.presentation.selected = state.conceptId;
     this.scene.setSelected(represented ? state.conceptId! : '');
     if (represented) {
-      this.presentation.pins = openCallout(this.presentation.pins, state.conceptId!, this.presentation.scene);
+      this.presentation.pins = openCallout(
+        this.presentation.pins,
+        state.conceptId!,
+        this.presentation.gallery,
+      );
       if (!this.spatialSelection) this.scene.focus();
     }
     this.renderPins();
-    this.host.dataset.scene = this.presentation.scene;
-    this.host.querySelector<HTMLSelectElement>('#explore-view')!.value = this.presentation.scene;
+    this.host.dataset.gallery = this.presentation.gallery;
+    if (target) this.host.querySelector('#explore-gallery-title')!.textContent = this.scene.gallery!.title;
+    this.host.querySelector<HTMLSelectElement>('#explore-view')!.value = this.presentation.gallery;
     this.host.querySelector<HTMLButtonElement>('#explore-focus')!.disabled = !represented;
     this.host.querySelector('#explore-view-note')!.textContent =
       !target || (state.conceptId && !represented)
         ? 'Reference only · No separate 3D representation for this entry. The previous atlas view is retained.'
-        : 'Illustrative atlas · Drag to orbit · Scroll to zoom · Right-drag to pan';
+        : 'Independent exhibits \u00b7 Free exploration';
   }
 
   private renderPins() {

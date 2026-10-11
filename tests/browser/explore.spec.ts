@@ -51,7 +51,8 @@ test('hierarchy, reference, related concepts and sources stay within Explore and
   await page.clock.runFor(1500);
   const before = await demoState(page);
   await root(page, 'EXPLORE').click();
-  await expect(page.locator('#explore-reference-title')).toHaveText('Explore');
+  await expect(page.locator('.explore-reference')).toBeHidden();
+  await expect(page.locator('#explore-gallery-title')).toHaveText('The concept atlas');
   await expect(page.getByRole('tab', { name: 'Journey', exact: true })).toHaveCount(0);
   await expect(page.locator('#explore-workspace canvas')).toBeVisible();
   await expect(page.locator('.playback')).toBeHidden();
@@ -90,7 +91,8 @@ test('empty future categories are truthful and breadcrumbs navigate back', async
   await expect(page.locator('.explore-category-list > button')).toHaveCount(4);
   await expect(page.locator('.explore-category-list')).toContainText('Not yet populated');
   await category(page, 'rag').click();
-  await expect(page.locator('.explore-reference')).toContainText('has not been added');
+  await expect(page.locator('.explore-reference')).toBeHidden();
+  await expect(page.locator('.explore-contents')).toContainText('No reference entries yet');
   await expect(page.locator('#explore-workspace [data-explore-concept]')).toHaveCount(0);
   await page.locator('.explore-breadcrumbs [data-explore-category="all"]').click();
   await category(page, 'web').click();
@@ -140,8 +142,10 @@ for (const width of [1440, 820, 390])
     await root(page, 'EXPLORE').click();
     for (const theme of ['light', 'dark']) {
       if (theme === 'dark') await page.locator('#theme').click();
+      if (await page.locator('.explore-contents').isHidden())
+        await page.locator('#explore-contents-toggle').click();
       await page.locator('.explore-breadcrumbs [data-explore-category="all"]').click();
-      await page.screenshot({ path: `artifacts/v4/part4-${width}-${theme}-contents.png` });
+      await page.screenshot({ path: `artifacts/v4/part45-${width}-${theme}-contents.png` });
       await category(page, 'network').click();
       await concept(page, 'router').click();
       await expect(page.locator('#explore-reference-title')).toBeInViewport();
@@ -153,6 +157,6 @@ for (const width of [1440, 820, 390])
         .locator('#explore-workspace')
         .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
       expect(overflowing).toBe(false);
-      await page.screenshot({ path: `artifacts/v4/part4-${width}-${theme}-reference.png` });
+      await page.screenshot({ path: `artifacts/v4/part45-${width}-${theme}-reference.png` });
     }
   });

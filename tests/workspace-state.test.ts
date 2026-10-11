@@ -1,36 +1,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  createExplorePresentation,
-  exploreCategoryScene,
-  exploreConceptScene,
-  exploreRooms,
-} from '../src/workspace-state.ts';
+import { createExplorePresentation } from '../src/workspace-state.ts';
+import { categoryGallery, conceptGallery, exploreGalleries } from '../src/explore-catalogue.ts';
 import { conceptRegistry } from '../src/concept-registry.ts';
 import { observeSceneFrames } from '../src/scene-loop.ts';
 
 test('Explore bookmarks and pins are instance-local, not global journey state', () => {
   const a = createExplorePresentation(),
     b = createExplorePresentation();
-  a.pins.push({ conceptId: 'router', scene: 'world' });
-  a.views.set('world', { position: [1, 2, 3], target: [0, 0, 0], zoom: 2, composition: [0, 0] });
+  a.pins.push({ conceptId: 'router', scene: 'catalogue:network' });
+  a.views.set('catalogue:network', { position: [1, 2, 3], target: [0, 0, 0], zoom: 2, composition: [0, 0] });
   assert.equal(b.pins.length, 0);
   assert.equal(b.views.size, 0);
   assert.equal(b.selected, null);
 });
 
-test('coherent category rooms reuse authored anchors and leave future categories unmapped', () => {
-  assert.equal(exploreCategoryScene('attention'), 'block');
-  assert.equal(exploreCategoryScene('preparation'), 'model');
-  assert.equal(exploreCategoryScene('network'), 'world');
-  assert.equal(exploreCategoryScene('host'), 'tools');
+test('category galleries cover shared concepts without Demo scene or stage identities', () => {
+  assert.equal(categoryGallery('attention')?.categoryId, 'blocks');
+  assert.equal(categoryGallery('preparation')?.categoryId, 'preparation');
+  assert.equal(categoryGallery('network')?.categoryId, 'network');
+  assert.equal(categoryGallery('host')?.categoryId, 'tools');
   for (const category of ['retrieval', 'rag', 'web', 'vector-search'] as const)
-    assert.equal(exploreCategoryScene(category), undefined);
+    assert.equal(categoryGallery(category), undefined);
   for (const concept of Object.values(conceptRegistry)) {
-    assert.equal(exploreConceptScene(concept.id), concept.anchor.scene);
-    assert.ok(exploreRooms.some((room) => room.scene === exploreConceptScene(concept.id)));
+    assert.ok(conceptGallery(concept.id)?.exhibits.some((e) => e.conceptId === concept.id));
   }
-  assert.equal(exploreConceptScene('future-unknown'), undefined);
+  assert.equal(conceptGallery('future-unknown'), undefined);
+  assert.equal(new Set(exploreGalleries.map((g) => g.id)).size, exploreGalleries.length);
+  for (const gallery of exploreGalleries) {
+    assert.ok(gallery.id.startsWith('catalogue:'));
+    assert.equal(new Set(gallery.exhibits.map((e) => e.conceptId)).size, gallery.exhibits.length);
+    assert.equal(new Set(gallery.exhibits.map((e) => e.position.join(','))).size, gallery.exhibits.length);
+    for (const exhibit of gallery.exhibits) assert.ok(conceptRegistry[exhibit.conceptId]);
+    assert.ok(gallery.framing.span > 0);
+  }
 });
 
 test('retained renderers share one scheduler and disposal removes every callback and RAF', () => {

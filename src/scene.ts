@@ -1,3 +1,6 @@
+import type { ExploreCategoryView } from './explore-catalogue.ts';
+import { palette, drawConceptAsset, assetLabelHeights } from './concept-assets.ts';
+import type { ConceptAssetId } from './concept-assets.ts';
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -17,16 +20,6 @@ import { resolveComposition, resolveFramingProfile } from './framing.ts';
 import type { Point3 } from './framing.ts';
 import { GuidedEmphasis } from './emphasis.ts';
 
-const palette = {
-  white: '#edf2f0',
-  edge: '#b6c9c4',
-  dark: '#29443f',
-  teal: '#43a58f',
-  mint: '#a7d6c5',
-  blue: '#739ec5',
-  gold: '#d8af6b',
-  purple: '#a399c1',
-};
 type NodeRecord = { id: string; group: T.Group; label: HTMLButtonElement; anchor: T.Vector3 };
 export function landscapeCanvas(refinement = 1): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -91,6 +84,7 @@ export function landscapeCanvas(refinement = 1): HTMLCanvasElement {
 }
 
 export interface AtlasSceneOptions {
+  gallery?: ExploreCategoryView;
   framing?: HTMLElement;
   annotations?: CalloutLayerOptions;
   accessibleLabel?: string;
@@ -106,6 +100,7 @@ export class AtlasScene {
   nodes: NodeRecord[] = [];
   paths: T.CatmullRomCurve3[] = [];
   sceneId: SceneId = 'world';
+  gallery?: ExploreCategoryView;
   selected = 'device';
   labelsOn = true;
   local = false;
@@ -150,7 +145,7 @@ export class AtlasScene {
   private viewportOffset = new T.Vector2();
   private emphasis = new GuidedEmphasis();
   private emphasisEnabled = false;
-  private calloutModels: readonly Callout[] = [];
+  private calloutModels: readonly Callout<string>[] = [];
   constructor(
     private container: HTMLElement,
     onSelect: (id: string) => void,
@@ -288,7 +283,8 @@ export class AtlasScene {
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
     this.observer.observe(this.framing);
-    this.build('world');
+    if (options.gallery) this.setGallery(options.gallery);
+    else this.build('world');
     this.resize();
     this.stopFrames = observeSceneFrames(this.animate);
   }
@@ -534,18 +530,42 @@ export class AtlasScene {
     );
     this.root.add(arrow);
   }
+  /** Catalogue exhibits have their own placements; no Demo route is built here. */
+  setGallery(view: ExploreCategoryView) {
+    this.cancelFocus();
+    this.disposeRoot();
+    this.gallery = view;
+    this.nodes = [];
+    this.paths = [];
+    this.labels.replaceChildren();
+    for (const exhibit of view.exhibits) {
+      const scale = exhibit.scale ?? 1;
+      this.node(exhibit.conceptId, exhibit.position, assetLabelHeights[exhibit.asset] * scale, (group) => {
+        drawConceptAsset(this, group, exhibit.asset);
+        group.scale.setScalar(scale);
+        group.rotation.y = exhibit.rotation ?? 0;
+      });
+    }
+    this.setSelected(this.selected);
+    this.emphasis.prepare(this.root);
+    this.updateEmphasisOwners();
+    this.applyColours();
+    this.reset();
+    this.resize();
+  }
   build(id: SceneId) {
+    this.gallery = undefined;
     this.disposeRoot();
     this.sceneId = id;
     this.nodes = [];
     this.paths = [];
     this.labels.replaceChildren();
     if (id === 'world') {
-      this.node('device', [-6, 0, 2], 2.4, (g) => this.laptop(g));
+      this.node('device', [-6, 0, 2], 2.4, (g) => drawConceptAsset(this, g, 'device'));
       if (!this.local) {
-        this.node('router', [-3, 0, 0], 2, (g) => this.router(g));
-        this.node('internet', [0, 0, -2], 3.2, (g) => this.globe(g));
-        this.node('datacenter', [5, 0, 0], 3.1, (g) => this.building(g));
+        this.node('router', [-3, 0, 0], 2, (g) => drawConceptAsset(this, g, 'router'));
+        this.node('internet', [0, 0, -2], 3.2, (g) => drawConceptAsset(this, g, 'internet'));
+        this.node('datacenter', [5, 0, 0], 3.1, (g) => drawConceptAsset(this, g, 'datacenter'));
         this.connect([-4.6, 0.32, 2], [-3.8, 0.32, 0.1]);
         this.connect([-2, 0.32, 0], [-1.4, 0.32, -2]);
         this.connect([1.5, 0.32, -2], [3, 0.32, 0]);
@@ -564,7 +584,7 @@ export class AtlasScene {
           this.root.add(tree);
         }
       } else {
-        this.node('gpu', [1, 0, 0], 1.65, (g) => this.board(g), 'Local accelerator');
+        this.node('gpu', [1, 0, 0], 1.65, (g) => drawConceptAsset(this, g, 'gpu'), 'Local accelerator');
         this.connect([-4.5, 0.3, 2], [-1, 0.3, 0]);
         this.connect([1, 0.3, 1.8], [-6, 0.3, 3.7], '#9aafbf');
       }
@@ -572,66 +592,33 @@ export class AtlasScene {
         'response',
         [-0.7, 0, 3.7],
         0.72,
-        (g) => {
-          this.box(g, [1.4, 0.1, 0.6], [0, 0.35, 0], '#dce7ee');
-          for (let i = 0; i < 3; i++)
-            this.box(g, [0.75 - i * 0.15, 0.012, 0.04], [-0.05, 0.412, -0.15 + i * 0.13], '#86a0af');
-        },
+        (g) => drawConceptAsset(this, g, 'response'),
         'Response returns',
       );
     } else if (id === 'compute') {
       if (this.local) {
-        this.node('device', [-4, 0, 0], 2.4, (g) => this.laptop(g), 'Local application');
-        this.node('gpu', [1, 0, 1], 1.6, (g) => this.board(g), 'On-device accelerator');
-        this.node('weights', [4, 0, -2], 1.8, (g) => this.tokenGrid(g, palette.gold, 3, 4));
+        this.node('device', [-4, 0, 0], 2.4, (g) => drawConceptAsset(this, g, 'device'), 'Local application');
+        this.node('gpu', [1, 0, 1], 1.6, (g) => drawConceptAsset(this, g, 'gpu'), 'On-device accelerator');
+        this.node('weights', [4, 0, -2], 1.8, (g) => drawConceptAsset(this, g, 'weights'));
         this.connect([-2.5, 0.3, 0], [-0.9, 0.3, 1]);
         this.connect([3, 0.3, -1.2], [2, 0.3, 0.1], palette.gold);
       } else {
-        this.node('ingress', [-5, 0, 1], 1.7, (g) => this.chip(g, palette.blue, 1.5));
-        this.node('rack', [-1, 0, -1], 3.35, (g) => this.rack(g));
-        this.node('gpu', [3.5, 0, 1.5], 1.6, (g) => this.board(g));
-        this.node('weights', [4.6, 0, -2.6], 1.8, (g) => this.tokenGrid(g, palette.gold, 3, 4));
+        this.node('ingress', [-5, 0, 1], 1.7, (g) => drawConceptAsset(this, g, 'ingress'));
+        this.node('rack', [-1, 0, -1], 3.35, (g) => drawConceptAsset(this, g, 'rack'));
+        this.node('gpu', [3.5, 0, 1.5], 1.6, (g) => drawConceptAsset(this, g, 'gpu'));
+        this.node('weights', [4.6, 0, -2.6], 1.8, (g) => drawConceptAsset(this, g, 'weights'));
         this.connect([-4, 0.3, 1], [-2.6, 0.3, -1]);
         this.connect([0.6, 0.3, -1], [1.6, 0.3, 1.5]);
         this.connect([4.6, 0.3, -1.5], [4.6, 0.3, 0.1], palette.gold);
       }
     } else if (id === 'model') {
-      this.node('context', [-6.8, 0, 1.6], 1.6, (g) => {
-        this.platform(g, 2, 2);
-        for (let i = 0; i < 3; i++)
-          this.box(
-            g,
-            [1.4, 0.09, 0.85],
-            [i * 0.05, 0.45 + i * 0.25, 0],
-            i === 2 ? palette.mint : palette.white,
-          );
-      });
-      this.node('tokenizer', [-4.25, 0, 0.5], 1.45, (g) => this.chip(g, palette.blue, 1.35));
-      this.node('embedding', [-1.5, 0, -0.5], 1.6, (g) => this.tokenGrid(g, palette.mint, 4, 4));
-      this.node('block', [2, 0, -0.8], 4.1, (g) => {
-        this.platform(g, 3, 2.6);
-        for (let i = 0; i < 6; i++) {
-          this.box(g, [2.1, 0.31, 1.7], [0, 0.6 + i * 0.5, 0], i % 2 ? palette.mint : '#b9d2c8');
-          this.box(g, [1.65, 0.035, 0.045], [0, 0.63 + i * 0.5, 0.88], palette.teal);
-          this.box(
-            g,
-            [0.42 + this.decode * 0.1, 0.2, 0.64],
-            [1.55 + this.decode * 0.05, 0.6 + i * 0.5, 0.1],
-            palette.gold,
-          );
-        }
-      });
-      this.node('cache', [4.65, 0, -1.9], 1.35, (g) => {
-        this.platform(g, 1.8, 1.7);
-        for (let i = 0; i < 3 + this.decode; i++)
-          this.box(g, [0.21, 0.65, 0.68], [-0.64 + i * 0.24, 0.63, 0], palette.gold);
-      });
-      this.node('sampling', [5.8, 0, 1.45], 1.7, (g) => this.tokenGrid(g, palette.blue, 2, 4));
-      this.node('decode', [1, 0, 3.5], 1, (g) => {
-        this.platform(g, 4.8, 1.15);
-        for (let i = 0; i < 4 + this.decode; i++)
-          this.box(g, [0.47, 0.22, 0.55], [-1.95 + i * 0.57, 0.46, 0], i < 4 ? palette.white : palette.teal);
-      });
+      this.node('context', [-6.8, 0, 1.6], 1.6, (g) => drawConceptAsset(this, g, 'context'));
+      this.node('tokenizer', [-4.25, 0, 0.5], 1.45, (g) => drawConceptAsset(this, g, 'tokenizer'));
+      this.node('embedding', [-1.5, 0, -0.5], 1.6, (g) => drawConceptAsset(this, g, 'embedding'));
+      this.node('block', [2, 0, -0.8], 4.1, (g) => drawConceptAsset(this, g, 'block'));
+      this.node('cache', [4.65, 0, -1.9], 1.35, (g) => drawConceptAsset(this, g, 'cache'));
+      this.node('sampling', [5.8, 0, 1.45], 1.7, (g) => drawConceptAsset(this, g, 'sampling'));
+      this.node('decode', [1, 0, 3.5], 1, (g) => drawConceptAsset(this, g, 'decode'));
       this.connect([-5.8, 0.3, 1.6], [-5.1, 0.3, 0.5]);
       this.connect([-3.3, 0.3, 0.5], [-2.6, 0.3, -0.5]);
       this.connect([-0.3, 0.3, -0.5], [0.7, 0.3, -0.8]);
@@ -642,9 +629,7 @@ export class AtlasScene {
         'prefill',
         [-1.6, 0, -3.2],
         0.85,
-        (g) => {
-          this.box(g, [1.8, 0.13, 0.65], [0, 0.35, 0], palette.mint);
-        },
+        (g) => drawConceptAsset(this, g, 'prefill'),
         'Prefill → decode',
       );
     } else if (id === 'block') {
@@ -663,36 +648,7 @@ export class AtlasScene {
           key,
           [(i - 2.5) * gap, 0, 0],
           key === 'attention' ? 2.7 : i % 2 ? 1.9 : 2.2,
-          (g) => {
-            this.platform(g, 1.9, 2.4);
-            if (key === 'attention') {
-              for (let r = 0; r < 4; r++)
-                for (let col = 0; col <= r; col++)
-                  this.box(
-                    g,
-                    [0.33, 0.25 + r * 0.22, 0.33],
-                    [-0.7 + col * 0.43, 0.65 + r * 0.2, -0.7 + r * 0.43],
-                    palette.teal,
-                  );
-            } else if (key === 'mlp') {
-              for (let col = 0; col < 3; col++) {
-                const count = col === 1 ? 6 : 3;
-                for (let j = 0; j < count; j++) {
-                  const p = [-0.7 + col * 0.7, 0.55 + j * 0.23, 0];
-                  this.sphere(g, 0.1, p, palette.purple);
-                  if (col < 2)
-                    for (let k = 0; k < (col === 0 ? 6 : 3); k++)
-                      this.line(g, [p, [p[0] + 0.7, 0.55 + k * 0.23, 0]], '#c4bfd4', 0.008);
-                }
-              }
-            } else if (key === 'norm') {
-              for (let j = 0; j < 5; j++)
-                this.box(g, [0.23, 0.65, 0.7], [-0.72 + j * 0.36, 0.65, 0], palette.blue);
-            } else {
-              this.box(g, [1.4, 0.17, 0.3], [0, 0.9, 0], palette.teal);
-              this.box(g, [0.3, 0.17, 1.4], [0, 0.9, 0], palette.teal);
-            }
-          },
+          (g) => drawConceptAsset(this, g, key as ConceptAssetId),
           titles[i],
         );
         if (i) this.connect([(i - 3.5) * gap + 0.8, 0.3, 0], [(i - 2.5) * gap - 0.8, 0.3, 0]);
@@ -723,45 +679,30 @@ export class AtlasScene {
         'cache',
         [-1.5 * gap, 0, -3],
         1.4,
-        (g) => this.tokenGrid(g, palette.gold, 2, 4),
+        (g) => drawConceptAsset(this, g, 'cache-block'),
         'Per-layer KV cache',
       );
       this.connect([-1.5 * gap, 0.35, -1.2], [-1.5 * gap, 0.35, -2], palette.gold);
     } else if (id === 'tools') {
-      this.node('intent', [-5, 0, 1.6], 1.7, (g) => this.chip(g, palette.teal));
-      this.node('host', [-1.8, 0, -0.8], 1.7, (g) => this.chip(g, palette.blue));
-      this.node('mcp', [2.3, 0, -1], 2, (g) => {
-        this.platform(g, 3.3, 2.7);
-        this.box(g, [0.9, 1, 0.9], [-0.85, 0.85, 0], palette.blue);
-        this.box(g, [0.9, 1.4, 0.9], [0.85, 1.05, 0], palette.purple);
-        this.line(
-          g,
-          [
-            [-0.4, 1.1, 0],
-            [0.4, 1.1, 0],
-          ],
-          palette.teal,
-          0.04,
-        );
-      });
-      this.node('tool-result', [3.8, 0, 2.4], 1.6, (g) => {
-        this.chip(g, palette.gold);
-      });
+      this.node('intent', [-5, 0, 1.6], 1.7, (g) => drawConceptAsset(this, g, 'intent'));
+      this.node('host', [-1.8, 0, -0.8], 1.7, (g) => drawConceptAsset(this, g, 'host'));
+      this.node('mcp', [2.3, 0, -1], 2, (g) => drawConceptAsset(this, g, 'mcp'));
+      this.node('tool-result', [3.8, 0, 2.4], 1.6, (g) => drawConceptAsset(this, g, 'tool-result'));
       this.connect([-3.8, 0.3, 1.6], [-2.9, 0.3, -0.8]);
       this.connect([-0.6, 0.3, -0.8], [0.7, 0.3, -1]);
       this.connect([3.2, 0.3, 0.4], [3.8, 0.3, 1.3]);
       this.connect([2.5, 0.3, 2.5], [-4.8, 0.3, 2.9], palette.blue);
     } else if (id === 'vision') {
-      this.node('image', [-4.5, 0, 1], 2.7, (g) => this.imageTile(g));
-      this.node('patches', [0, 0, -1.1], 1.8, (g) => this.imageTile(g, 1, true));
-      this.node('fusion', [4.3, 0, 1], 2.2, (g) => this.tokenGrid(g, palette.purple, 4, 5));
+      this.node('image', [-4.5, 0, 1], 2.7, (g) => drawConceptAsset(this, g, 'image'));
+      this.node('patches', [0, 0, -1.1], 1.8, (g) => drawConceptAsset(this, g, 'patches'));
+      this.node('fusion', [4.3, 0, 1], 2.2, (g) => drawConceptAsset(this, g, 'fusion'));
       this.connect([-2.8, 0.3, 1], [-1.7, 0.3, -1.1]);
       this.connect([1.7, 0.3, -1.1], [3, 0.3, 1]);
     } else {
-      this.node('conditioning', [-5.4, 0, 1.3], 1.5, (g) => this.chip(g, palette.purple, 1.4));
-      this.node('noise', [-2.4, 0, -1.5], 2.7, (g) => this.imageTile(g, 0));
-      this.node('denoise', [1.7, 0, 0.1], 2.7, (g) => this.imageTile(g, 0.15 + this.refinement * 0.23));
-      this.node('image-output', [5.7, 0, 1.5], 2.7, (g) => this.imageTile(g));
+      this.node('conditioning', [-5.4, 0, 1.3], 1.5, (g) => drawConceptAsset(this, g, 'conditioning'));
+      this.node('noise', [-2.4, 0, -1.5], 2.7, (g) => drawConceptAsset(this, g, 'noise'));
+      this.node('denoise', [1.7, 0, 0.1], 2.7, (g) => drawConceptAsset(this, g, 'denoise'));
+      this.node('image-output', [5.7, 0, 1.5], 2.7, (g) => drawConceptAsset(this, g, 'image-output'));
       this.connect([-4.4, 0.3, 1.3], [-3.9, 0.3, -1.5]);
       this.connect([-0.8, 0.3, -1.5], [0.1, 0.3, 0.1]);
       this.connect([3.3, 0.3, 0.1], [4.1, 0.3, 1.5]);
@@ -799,7 +740,9 @@ export class AtlasScene {
     // Open cards own colour in their remembered scene, even during detachment.
     // Off-scene pins cannot exempt an unrelated instance in the current scene.
     const open = this.calloutModels.filter(
-      (card) => card.scene === this.sceneId && this.nodes.some((node) => node.id === card.conceptId),
+      (card) =>
+        card.scene === (this.gallery?.id ?? this.sceneId) &&
+        this.nodes.some((node) => node.id === card.conceptId),
     );
     this.emphasis.setSubjects(this.emphasisEnabled ? new Set(open.map((card) => card.conceptId)) : undefined);
     const guided = open.find((card) => card.role === 'guided')?.conceptId;
@@ -874,7 +817,7 @@ export class AtlasScene {
     }
   }
   setCallouts(
-    models: readonly Callout[],
+    models: readonly Callout<string>[],
     onClose: (concept: string) => void,
     onInspect: (concept: string) => void,
   ) {
@@ -888,7 +831,7 @@ export class AtlasScene {
     this.projectCallouts();
   }
   private projectCallouts() {
-    this.callouts?.project(this.sceneId, (subject) => {
+    this.callouts?.project(this.gallery?.id ?? this.sceneId, (subject) => {
       // Reuse the authored object-label anchor; repeated Block concepts use the
       // same first-instance identity as guided focus. Resolve afresh after builds.
       const node = this.nodes.find((node) => node.id === subject);
@@ -996,9 +939,13 @@ export class AtlasScene {
   }
   reset() {
     this.cancelFocus();
-    this.camera.position.set(11, 10.5, 15);
-    this.controls.target.set(0, 0.8, 0.3);
-    this.camera.zoom = 1;
+    this.camera.position.set(
+      ...(this.gallery?.framing.position ?? ([11, 10.5, 15] as [number, number, number])),
+    );
+    this.controls.target.set(
+      ...(this.gallery?.framing.target ?? ([0, 0.8, 0.3] as [number, number, number])),
+    );
+    this.camera.zoom = this.gallery?.framing.zoom ?? 1;
     this.composition.set(0, 0);
     this.compositionTarget.set(0, 0);
     this.targetZoom = 1;
@@ -1022,7 +969,9 @@ export class AtlasScene {
     const frame = this.framing.getBoundingClientRect(),
       bounds = this.container.getBoundingClientRect(),
       aspect = frame.width / Math.max(1, frame.height),
-      horizontal = this.sceneId === 'model' || this.sceneId === 'diffusion' ? 18.7 : 17.5,
+      horizontal =
+        this.gallery?.framing.span ??
+        (this.sceneId === 'model' || this.sceneId === 'diffusion' ? 18.7 : 17.5),
       unitsPerPixel = Math.max(9.8, horizontal / aspect) / Math.max(1, frame.height);
     // OrbitControls normalises drag distance by its element height. Compensate
     // for the larger canvas so an equal drag retains the established rotation.

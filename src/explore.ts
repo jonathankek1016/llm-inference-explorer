@@ -7,7 +7,8 @@ import {
   exploreReference,
   referenceSources,
 } from './concept-registry.ts';
-import { exploreRooms } from './workspace-state.ts';
+import { exploreGalleries } from './explore-catalogue.ts';
+import { icon } from './icons.ts';
 import type { CategoryId } from './concept-registry.ts';
 
 export interface ExploreState {
@@ -55,22 +56,38 @@ export class ExploreBrowser {
   constructor(host: HTMLElement) {
     this.host = host;
     // Stable mounts: browsing reference content must never reconstruct the viewport.
-    host.innerHTML = `<aside class="explore-contents panel" aria-label="Explore contents"></aside>
-      <section class="explore-atlas" aria-label="Explore 3D atlas">
+    host.innerHTML = `<section class="explore-atlas" aria-label="Explore 3D atlas">
+        <div class="explore-stage"><div id="explore-viewport" class="viewport"></div></div>
+        <div id="explore-framing" aria-hidden="true"></div>
+        <header class="explore-intro"><span class="eyebrow">THE SPATIAL CATALOGUE</span><h1 id="explore-gallery-title"></h1><p id="explore-view-note" class="small" role="status"></p></header>
         <div class="explore-view-controls">
-          <label>Atlas view <select id="explore-view" aria-label="Explore atlas view">${exploreRooms.map((room) => `<option value="${room.scene}">${room.title}</option>`).join('')}</select></label>
+          <label><span class="sr-only">Gallery</span><select id="explore-view" aria-label="Explore atlas view">${exploreGalleries.map((view) => `<option value="${view.id}">${escape(view.title)}</option>`).join('')}</select></label>
           <div role="group" aria-label="Explore camera tools">
-            <button id="explore-reset" title="Reset Explore view">Reset</button>
-            <button id="explore-focus" disabled>Focus</button>
-            <button id="explore-labels" aria-pressed="true">Labels</button>
+            <button id="explore-reset" class="icon-button" aria-label="Reset Explore view" title="Reset Explore view">${icon('replay')}</button>
+            <button id="explore-focus" class="icon-button" aria-label="Focus Explore concept" title="Focus Explore concept" disabled>${icon('focus')}</button>
+            <button id="explore-labels" class="icon-button" aria-label="Explore labels" title="Explore labels" aria-pressed="true">${icon('labels')}</button>
           </div>
         </div>
-        <div class="explore-stage"><div id="explore-viewport" class="viewport"></div></div>
-        <p id="explore-view-note" class="small" role="status">Drag to orbit · Scroll to zoom · Right-drag to pan</p>
       </section>
-      <article class="explore-reference panel" aria-labelledby="explore-reference-title"></article>`;
+      <button id="explore-contents-toggle" class="explore-panel-toggle" aria-controls="explore-contents" aria-expanded="true">${icon('list')} Contents</button>
+      <aside id="explore-contents" class="explore-contents panel" aria-label="Explore contents"></aside>
+      <button id="explore-reference-toggle" class="explore-panel-toggle" aria-controls="explore-reference" aria-expanded="true" hidden>${icon('info')} Reference</button>
+      <article id="explore-reference" class="explore-reference panel" aria-labelledby="explore-reference-title" hidden></article>`;
+    host.dataset.contentsOpen = String(!matchMedia('(max-width: 700px)').matches);
+    this.applyPanels();
     host.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>('button');
+      if (button?.id === 'explore-contents-toggle') {
+        host.dataset.contentsOpen = String(host.dataset.contentsOpen !== 'true');
+        if (matchMedia('(max-width: 700px)').matches) host.dataset.inspectorOpen = 'false';
+        this.applyPanels();
+      }
+      if (button?.id === 'explore-reference-toggle' || button?.id === 'explore-reference-close') {
+        host.dataset.inspectorOpen = String(host.dataset.inspectorOpen !== 'true');
+        if (matchMedia('(max-width: 700px)').matches) host.dataset.contentsOpen = 'false';
+        this.applyPanels();
+        host.querySelector<HTMLElement>('#explore-reference-toggle')!.focus();
+      }
       if (button?.dataset.exploreCategory) this.navigate({ categoryId: button.dataset.exploreCategory });
       if (button?.dataset.exploreConcept) this.navigate({ conceptId: button.dataset.exploreConcept });
     });
@@ -88,6 +105,8 @@ export class ExploreBrowser {
     const reference = this.host.querySelector<HTMLElement>('.explore-reference')!;
     this.referenceScroll.set(this.referenceKey(), reference.scrollTop);
     this.state = next;
+    this.host.dataset.inspectorOpen = String(!!next.conceptId);
+    if (next.conceptId && matchMedia('(max-width: 700px)').matches) this.host.dataset.contentsOpen = 'false';
     this.render();
     reference.scrollTop = this.referenceScroll.get(this.referenceKey()) ?? 0;
     this.onNavigate?.(this.state);
@@ -96,7 +115,16 @@ export class ExploreBrowser {
     )!;
     if ('categoryId' in destination) this.host.scrollTop = 0;
     heading.focus({ preventScroll: true });
-    if (matchMedia('(max-width: 980px)').matches) heading.scrollIntoView({ block: 'nearest' });
+  }
+  private applyPanels() {
+    const contents = this.host.dataset.contentsOpen === 'true';
+    const reference = this.host.dataset.inspectorOpen === 'true' && !!this.state.conceptId;
+    this.host.querySelector<HTMLElement>('.explore-contents')!.hidden = !contents;
+    this.host.querySelector<HTMLElement>('.explore-reference')!.hidden = !reference;
+    this.host.querySelector('#explore-contents-toggle')!.setAttribute('aria-expanded', String(contents));
+    const toggle = this.host.querySelector<HTMLButtonElement>('#explore-reference-toggle')!;
+    toggle.hidden = !this.state.conceptId;
+    toggle.setAttribute('aria-expanded', String(reference));
   }
   private render() {
     const { categoryId, conceptId } = this.state;
@@ -111,39 +139,29 @@ export class ExploreBrowser {
       const count = categoryConceptCount(id);
       return `<button data-explore-category="${id}"><span>${escape(item.title)}</span><small>${count ? `${count} concepts` : 'Not yet populated'}</small></button>`;
     };
+    this.host.querySelector('#explore-gallery-title')!.textContent =
+      categoryId === 'all' ? 'The concept atlas' : category.title;
     this.host.querySelector('.explore-contents')!.innerHTML = `
-        <span class="eyebrow">REFERENCE ATLAS</span><h2 id="explore-contents-title" tabindex="-1">Explore</h2>
-        <p class="small">Browse concepts at your own pace.</p>
-        <nav aria-label="Explore categories">
-          ${category.parent ? `<button class="explore-up" data-explore-category="${category.parent}">← ${escape(categoryById(category.parent)!.title)}</button>` : ''}
-          <h3>${categoryId === 'all' ? 'Categories' : escape(category.title)}</h3>
-          <div class="explore-category-list">${children.map((child) => categoryButton(child.id)).join('')}</div>
-          ${category.concepts.length ? `<h3>Concepts</h3><div class="explore-concept-list">${category.concepts.map((id) => conceptLink(id, conceptId)).join('')}</div>` : ''}
-          ${!categoryConceptCount(categoryId) ? '<p class="small">No reference entries yet. This area is reserved for future content.</p>' : ''}
-        </nav>
-      `;
-    this.host.querySelector('.explore-reference')!.innerHTML = `
+        <span class="eyebrow">EXPLORE / CONTENTS</span>
         <nav class="explore-breadcrumbs" aria-label="Explore breadcrumbs">${path
           .map(
             (item, i) =>
-              `<button data-explore-category="${item.id}" ${!concept && i === path.length - 1 ? 'aria-current="page"' : ''}>${escape(item.title)}</button>`,
+              `<button data-explore-category="${item.id}" ${i === path.length - 1 ? 'aria-current="page"' : ''}>${escape(item.title)}</button>`,
           )
-          .join(
-            '<span aria-hidden="true">/</span>',
-          )}${concept ? `<span aria-hidden="true">/</span><span aria-current="page">${escape(concept.title)}</span>` : ''}</nav>
-        <span class="eyebrow">${concept ? 'CONCEPT REFERENCE' : 'CONTENTS'}</span>
-        <h1 id="explore-reference-title" tabindex="-1">${escape(concept?.title ?? category.title)}</h1>
-        ${
-          concept
-            ? this.reference(concept.id)
-            : `
-          <p>${categoryConceptCount(categoryId) ? `Browse ${categoryConceptCount(categoryId)} supported concepts${categoryId === 'all' ? ' across the atlas' : ' in this area'}. Choose a category or concept from Contents, or use Find a concept.` : 'Reference material for this area has not been added yet.'}</p>
-          <p class="explore-note">Browse the atlas alongside this reference. Areas without models remain available as reference categories.</p>
-          ${children.length ? `<div class="explore-category-cards">${children.map((child) => categoryButton(child.id)).join('')}</div>` : ''}
-          ${category.concepts.length ? `<div class="explore-reference-links">${category.concepts.map((id) => conceptLink(id)).join('')}</div>` : ''}
-        `
-        }
-      `;
+          .join('<span aria-hidden="true">/</span>')}</nav>
+        <h2 id="explore-contents-title" tabindex="-1">${categoryId === 'all' ? 'Categories' : escape(category.title)}</h2>
+        <nav aria-label="Explore categories">
+          <div class="explore-category-list">${children.map((child) => categoryButton(child.id)).join('')}</div>
+          ${category.concepts.length ? `<div class="explore-concept-list">${category.concepts.map((id) => conceptLink(id, conceptId)).join('')}</div>` : ''}
+          ${!categoryConceptCount(categoryId) ? '<p class="small">No reference entries yet. This area is reserved for future content.</p>' : ''}
+        </nav>`;
+    this.host.querySelector('.explore-reference')!.innerHTML = concept
+      ? `
+        <div class="inspector-top"><span class="eyebrow">CONCEPT REFERENCE</span><button id="explore-reference-close" class="small-icon" aria-label="Close Explore reference">${icon('minus')}</button></div>
+        <h1 id="explore-reference-title" tabindex="-1">${escape(concept.title)}</h1>
+        ${this.reference(concept.id)}`
+      : '';
+    this.applyPanels();
   }
   private reference(id: string): string {
     const concept = conceptRegistry[id];

@@ -3,11 +3,11 @@ import type { SceneId } from './content.ts';
 import type { JourneyControl, TraceEvent } from './core.ts';
 import type { CalloutRegion } from './framing.ts';
 
-export interface ExplorationCallout {
+export interface ExplorationCallout<Space extends string = SceneId> {
   conceptId: string;
-  scene: SceneId;
+  scene: Space;
 }
-export interface Callout extends ExplorationCallout {
+export interface Callout<Space extends string = SceneId> extends ExplorationCallout<Space> {
   id: string;
   role: 'guided' | 'exploratory';
   title: string;
@@ -19,11 +19,11 @@ export interface Callout extends ExplorationCallout {
 }
 
 // One remembered reference per concept; reopening raises it and remembers its view.
-export function openCallout(
-  open: readonly ExplorationCallout[],
+export function openCallout<Space extends string>(
+  open: readonly ExplorationCallout<Space>[],
   conceptId: string,
-  scene: SceneId,
-): ExplorationCallout[] {
+  scene: Space,
+): ExplorationCallout<Space>[] {
   if (!concepts[conceptId]) return [...open];
   return [...open.filter((item) => item.conceptId !== conceptId), { conceptId, scene }];
 }
