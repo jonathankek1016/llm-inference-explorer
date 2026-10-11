@@ -1,42 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canSwitchWorkspace, demoCompatibilityHost, workspaces } from '../src/workspace.ts';
-import { createJourneyControl, transitionJourney } from '../src/core.ts';
+import { demoCompatibilityHost, workspaces } from '../src/workspace.ts';
+import type { NavigationIntent } from '../src/workspace.ts';
 
-test('root identity defaults to the Demo compatibility host, independently of journey mode', () => {
+test('root identity defaults to Demo independently of journey mode and concept destination', () => {
   assert.equal(demoCompatibilityHost.workspace, 'DEMO');
   assert.deepEqual(
     workspaces.map((w) => w.id),
     ['EXPLORE', 'DEMO', 'LIVE'],
   );
   assert.equal(typeof demoCompatibilityHost.instanceId, 'string');
-});
-
-test('temporary guard blocks every incomplete Demo journey without changing any state', () => {
-  for (const mode of ['MANUAL', 'AUTO'] as const)
-    for (const detached of [false, true])
-      for (const paused of [false, true]) {
-        let journey = transitionJourney(createJourneyControl(), { type: 'SET_MODE', mode });
-        journey = transitionJourney(journey, { type: 'START' });
-        if (detached) journey = transitionJourney(journey, { type: 'DETACH' });
-        if (paused) journey = transitionJourney(journey, { type: 'PAUSE' });
-        for (const reason of ['READING_HOLD', 'SETTINGS', 'APPEARANCE'] as const) {
-          journey = transitionJourney(journey, { type: 'SET_SUSPENSION', reason, suspended: true });
-          const before = structuredClone(journey);
-          assert.equal(canSwitchWorkspace('DEMO', 'EXPLORE', journey), false);
-          assert.equal(canSwitchWorkspace('DEMO', 'LIVE', journey), false);
-          assert.equal(canSwitchWorkspace('DEMO', 'DEMO', journey), true);
-          assert.deepEqual(journey, before);
-        }
-      }
-});
-
-test('inactive and retained completed states allow navigation without releasing completion', () => {
-  const inactive = createJourneyControl();
-  const completed = transitionJourney(transitionJourney(inactive, { type: 'START' }), { type: 'COMPLETE' });
-  for (const journey of [inactive, completed])
-    for (const from of workspaces)
-      for (const to of workspaces) assert.equal(canSwitchWorkspace(from.id, to.id, journey), true);
-  assert.equal(completed.active, true);
-  assert.equal(completed.completed, true);
+  const local: NavigationIntent = { kind: 'local-concept', conceptId: 'cache' };
+  const reference: NavigationIntent = { kind: 'explore-concept', conceptId: 'cache' };
+  assert.notEqual(local.kind, reference.kind);
 });

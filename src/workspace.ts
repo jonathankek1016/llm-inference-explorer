@@ -20,11 +20,9 @@ export const workspaces: readonly { id: WorkspaceId; label: string }[] = [
   { id: 'LIVE', label: 'Live Lab' },
 ];
 
-/** Temporary Part-1 migration guard, not global session admission. */
-export function canSwitchWorkspace(
-  current: WorkspaceId,
-  destination: WorkspaceId,
-  demoJourney: { active: boolean; completed: boolean },
-): boolean {
-  return current !== 'DEMO' || destination === 'DEMO' || !demoJourney.active || demoJourney.completed;
-}
+/** Destination intent is explicit even when two workspaces show the same concept. */
+export type NavigationIntent =
+  | { kind: 'local-concept'; conceptId: string }
+  | { kind: 'explore-concept'; conceptId: string }
+  | { kind: 'workspace'; destination: WorkspaceDestination }
+  | { kind: 'return-session'; sessionId: GuidedSessionId };

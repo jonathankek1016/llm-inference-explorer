@@ -3041,6 +3041,61 @@ select option {
 }
 
 /* Explore reference browsing has no renderer or guided presentation ownership. */
+.global-session {
+  position: absolute;
+  z-index: 12;
+  top: 5rem;
+  right: var(--margin);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: 0.6875rem;
+}
+.global-session button,
+.session-conflict-actions button {
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.5rem;
+}
+.global-session button:hover,
+.session-conflict-actions button:hover {
+  background: var(--accent-soft);
+}
+#session-conflict {
+  background: var(--panel-solid);
+  color: var(--text);
+}
+#session-conflict p {
+  line-height: 1.7;
+  margin: 1rem 0;
+}
+.session-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+@media (max-width: 980px) {
+  .global-session {
+    top: calc(var(--masthead-height) + 2.5rem);
+    left: var(--margin);
+    flex-wrap: wrap;
+    gap: 0.35rem 0.65rem;
+  }
+  #app[data-guided-session] .explore-workspace,
+  #app[data-guided-session] .workspace-scaffold {
+    top: calc(var(--masthead-height) + 7rem);
+  }
+  #app[data-guided-session] .scene-intro {
+    top: calc(var(--masthead-height) + 6.5rem);
+  }
+}
+
 .explore-workspace {
   position: absolute;
   inset: var(--workspace-top) var(--margin) 1.5rem;

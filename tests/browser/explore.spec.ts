@@ -99,14 +99,13 @@ test('empty future categories are truthful and breadcrumbs navigate back', async
 });
 
 for (const mode of ['AUTO', 'MANUAL'])
-  test(`${mode} completion survives Explore search; guard still blocks incomplete journeys`, async ({
-    page,
-  }) => {
+  test(`${mode} completion survives Explore search; incomplete journeys can park`, async ({ page }) => {
     await prepare(page);
     await page.locator('#journey-mode').selectOption(mode);
     await page.locator('#start-tour').click();
     await root(page, 'EXPLORE').click();
-    await expect(root(page, 'DEMO')).toHaveAttribute('aria-current', 'page');
+    await expect(root(page, 'EXPLORE')).toHaveAttribute('aria-current', 'page');
+    await page.locator('#global-session-return').click();
     await page.locator('#timeline').fill('17');
     if (mode === 'AUTO') await page.clock.runFor(6200);
     else {

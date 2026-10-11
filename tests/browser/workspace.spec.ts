@@ -73,13 +73,14 @@ test('inactive host survives root navigation; scaffolds own no replay and keyboa
 });
 
 for (const mode of ['AUTO', 'MANUAL']) {
-  test(`${mode} incomplete navigation guard preserves state, including detachment and blockers`, async ({
+  test(`${mode} incomplete session parks without changing stage, intent, view or modal blockers`, async ({
     page,
   }) => {
     await prepare(page);
     await page.locator('#journey-mode').selectOption(mode);
     await page.locator('#start-tour').click();
     await page.clock.runFor(2500);
+    const sessionId = await page.locator('#app').getAttribute('data-guided-session');
     for (const state of ['attached', 'paused', 'detached', 'settings', 'appearance']) {
       if (state === 'paused' && mode === 'AUTO') await page.locator('#play').click();
       if (state === 'detached') {
@@ -88,16 +89,25 @@ for (const mode of ['AUTO', 'MANUAL']) {
         await page.clock.runFor(1200);
       }
       if (state === 'settings') await page.locator('#settings-open').click();
-      if (state === 'appearance') {
-        await page.keyboard.press('Escape');
-        await page.locator('#appearance-open').click();
-      }
+      if (state === 'appearance') await page.locator('#appearance-open').click();
       const before = await snapshot(page);
-      // Modal top-layer prevents physical background clicks; exercise the same guard directly.
+      // The native modal prevents physical background clicks; exercise navigation directly.
       await root(page, 'EXPLORE').evaluate((b: HTMLButtonElement) => b.click());
-      await expect(root(page, 'DEMO')).toHaveAttribute('aria-current', 'page');
-      expect(await snapshot(page)).toEqual(before);
-      await expect(page.locator('#toast')).toContainText('Cross-workspace browsing');
+      await expect(root(page, 'EXPLORE')).toHaveAttribute('aria-current', 'page');
+      const parked = await snapshot(page);
+      expect(parked).toEqual({
+        ...before,
+        journey: { ...before.journey, guidedFocus: 'DETACHED', advancing: 'false' },
+      });
+      await expect(page.locator('#app')).toHaveAttribute('data-guided-session', sessionId!);
+      await page.clock.runFor(1000);
+      expect((await snapshot(page)).stage).toEqual(before.stage);
+      await root(page, 'DEMO').evaluate((b: HTMLButtonElement) => b.click());
+      await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+      await expect(page.locator('#resume-focus')).not.toHaveAttribute('hidden', '');
+      if (state === 'settings' || state === 'appearance') await page.keyboard.press('Escape');
+      await page.locator('#resume-focus').click();
+      await page.clock.runFor(1200);
     }
   });
 
@@ -113,6 +123,7 @@ for (const mode of ['AUTO', 'MANUAL']) {
       await page.locator('#complete-tour').click();
       await page.clock.runFor(1800);
     }
+    await expect(page.locator('#global-session')).toBeHidden();
     const before = await snapshot(page);
     await root(page, 'EXPLORE').click();
     await page.clock.runFor(1000);
@@ -124,27 +135,38 @@ for (const mode of ['AUTO', 'MANUAL']) {
     await expect(page.locator('#play')).toBeDisabled();
     await page.getByRole('button', { name: 'Replay from start', exact: true }).click();
     await expect(page.locator('#timeline')).toHaveValue('0');
+    await expect(page.locator('#global-session')).toBeVisible();
     await expect(page.locator('.playback')).toHaveAttribute('data-advancing', String(mode === 'AUTO'));
   });
 }
 
-test('guard does not reset elapsed teaching time; Reading Hold remains independent', async ({ page }) => {
+test('parked Auto preserves remaining teaching time and Reading Hold uses existing detach rules', async ({
+  page,
+}) => {
   await prepare(page);
   await page.locator('#start-tour').click();
   await page.clock.runFor(3000);
   await page.locator('#data-tab').click();
-  const before = await snapshot(page);
-  await root(page, 'LIVE').click();
-  expect(await snapshot(page)).toEqual(before);
   await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', 'READING_HOLD');
-  await page.clock.runFor(4200);
+  const sessionId = await page.locator('#app').getAttribute('data-guided-session');
+  await root(page, 'LIVE').click();
+  await expect(page.locator('#app')).toHaveAttribute('data-guided-session', sessionId!);
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
+  // Detachment ends the current-subject reading lease using the existing V3 rule.
+  await expect(page.locator('.playback')).toHaveAttribute('data-suspensions', '');
+  await page.clock.runFor(12000);
+  await expect(page.locator('#timeline')).toHaveValue('0');
+  await page.locator('#global-session-return').click();
+  await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'TRACKING');
   await page.clock.runFor(2500);
   await expect(page.locator('#timeline')).toHaveValue('0');
   await page.clock.runFor(600);
   await expect(page.locator('#timeline')).toHaveValue('1');
 });
 
-test('request source stays independent; request finishes while stopped Demo is hidden', async ({ page }) => {
+test('request source stays independent; request finishes after global End while Demo is hidden', async ({
+  page,
+}) => {
   let release!: () => void;
   const ready = new Promise<void>((resolve) => {
     release = resolve;
@@ -168,10 +190,9 @@ test('request source stays independent; request finishes while stopped Demo is h
   await page.locator('#send').click();
   await expect(page.locator('#stop-request')).toBeVisible();
   await root(page, 'LIVE').click();
-  await expect(root(page, 'DEMO')).toHaveAttribute('aria-current', 'page');
-  await page.locator('#stop-tour').click();
-  await root(page, 'LIVE').click();
   await expect(root(page, 'LIVE')).toHaveAttribute('aria-current', 'page');
+  await page.locator('#global-session-end').click();
+  await expect(page.locator('#global-session')).toBeHidden();
   release();
   await expect(page.locator('#request-status')).toContainText('Response received');
   await root(page, 'DEMO').click();

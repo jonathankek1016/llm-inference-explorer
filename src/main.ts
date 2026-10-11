@@ -34,8 +34,10 @@ import type { FramingRegistry } from './framing.ts';
 import type { CalibrationPanel } from './calibration.ts';
 import { ReadingHold, observeReading } from './reading-hold.ts';
 import { navigationFocus, readNavigationPreferences } from './navigation.ts';
-import { canSwitchWorkspace, demoCompatibilityHost, workspaces } from './workspace.ts';
-import type { WorkspaceId } from './workspace.ts';
+import { demoCompatibilityHost, workspaces } from './workspace.ts';
+import type { WorkspaceId, NavigationIntent, GuidedSessionId } from './workspace.ts';
+import { GuidedSessions, isIncompleteJourney } from './guided-session.ts';
+import type { SessionOwner } from './guided-session.ts';
 import { ExploreBrowser } from './explore.ts';
 import { categoryById, conceptRegistry, searchConceptRegistry } from './concept-registry.ts';
 
@@ -75,6 +77,20 @@ const state = {
 };
 let journey = createJourneyControl();
 let workspace: WorkspaceId = demoCompatibilityHost.workspace;
+const sessions = new GuidedSessions();
+const demoOwner: SessionOwner = {
+  workspace: 'DEMO',
+  instanceId: demoCompatibilityHost.instanceId!,
+  label: 'Demo Lab',
+};
+sessions.register(demoOwner, {
+  incomplete: () => isIncompleteJourney(journey),
+  detach: () => {
+    if (journey.guidedFocus !== 'DETACHED') detachGuidedFocus();
+  },
+  resume: () => resumeGuidedFocus(),
+  end: () => stopJourney(),
+});
 let navigationPreferences = readNavigationPreferences(read<unknown>('atlas-navigation', null));
 let exploratoryCallouts: ExplorationCallout[] = [];
 const explorationViews = new Map<
@@ -160,12 +176,6 @@ const explore = new ExploreBrowser($('explore-workspace'));
 $('app').dataset.workspace = workspace;
 $('demo-host').dataset.workspaceInstance = demoCompatibilityHost.instanceId;
 function switchWorkspace(destination: WorkspaceId) {
-  if (!canSwitchWorkspace(workspace, destination, journey)) {
-    toast(
-      'Stay in Demo Lab until this journey is stopped or completed. Cross-workspace browsing during a journey is coming in a later update.',
-    );
-    return;
-  }
   const returningFromScaffold = !!document.activeElement?.closest('#workspace-scaffold');
   workspace = destination;
   $('app').dataset.workspace = workspace;
@@ -190,6 +200,58 @@ function switchWorkspace(destination: WorkspaceId) {
   });
   if (returningFromScaffold)
     document.querySelector<HTMLElement>(`.workspace-nav [data-workspace="${workspace}"]`)?.focus();
+  renderGlobalSession();
+}
+function navigate(intent: NavigationIntent) {
+  switch (intent.kind) {
+    case 'workspace':
+      sessions.browse(intent.destination);
+      switchWorkspace(intent.destination.workspace);
+      break;
+    case 'explore-concept':
+      sessions.browse({ workspace: 'EXPLORE' });
+      switchWorkspace('EXPLORE');
+      explore.openConcept(intent.conceptId);
+      break;
+    case 'local-concept':
+      if (workspace === 'EXPLORE') explore.openConcept(intent.conceptId);
+      else if (workspace === 'DEMO') {
+        selectConcept(intent.conceptId);
+        showPanel('inspector');
+      }
+      break;
+    case 'return-session':
+      sessions.returnTo(intent.sessionId, (destination) => switchWorkspace(destination.workspace));
+      document.querySelector<HTMLElement>(`.workspace-nav [data-workspace="${workspace}"]`)?.focus();
+      break;
+  }
+}
+let conflictSession: GuidedSessionId | undefined;
+function admitSession(owner: SessionOwner, fresh = false): boolean {
+  const admission = sessions.admit(owner, fresh);
+  if (admission.allowed) return true;
+  conflictSession = admission.reservation.id;
+  $('session-conflict-description').textContent =
+    `${admission.reservation.owner.label} already has an incomplete guided session. Return to it, end it, or cancel this start. Ending it will not automatically start another journey.`;
+  const dialog = $<HTMLDialogElement>('session-conflict');
+  if (!dialog.open) dialog.showModal();
+  return false;
+}
+function renderGlobalSession() {
+  const session = sessions.current;
+  $('global-session').hidden = !session;
+  if (!session) {
+    delete $('app').dataset.guidedSession;
+    return;
+  }
+  $('app').dataset.guidedSession = session.id;
+  $('global-session-label').textContent =
+    `${session.owner.label} · ${workspace === session.owner.workspace ? 'Active session' : 'Session parked'}`;
+  $('global-session-return').hidden = workspace === session.owner.workspace;
+}
+function stopJourney() {
+  atlas?.cancelFocus();
+  updateJourney({ type: 'STOP' });
 }
 const readingHold = new ReadingHold((suspended) =>
   updateJourney({ type: 'SET_SUSPENSION', reason: 'READING_HOLD', suspended }),
@@ -258,7 +320,11 @@ function setPlaying(value: boolean) {
 function updateJourney(action: JourneyAction) {
   const starting = !journey.active;
   const wasAdvancing = journeyAdvancing(journey);
-  journey = transitionJourney(journey, action);
+  const next = transitionJourney(journey, action);
+  // Includes implicit acquisitions through stage navigation, not just Start/Replay.
+  if (isIncompleteJourney(next) && !admitSession(demoOwner)) return false;
+  journey = next;
+  sessions.reconcile(demoOwner);
   // Exclude time across suspension boundaries even if no RAF ran in between.
   if (wasAdvancing !== journeyAdvancing(journey)) animationLast = performance.now();
   renderJourneyControl();
@@ -267,6 +333,7 @@ function updateJourney(action: JourneyAction) {
     if (starting) selectConcept(frame.event.conceptId, { pause: false });
     focusJourneySubject(previousScene !== state.scene);
   }
+  return true;
 }
 function focusJourneySubject(canonical = false) {
   if (journey.active && journey.guidedFocus === 'TRACKING') {
@@ -308,6 +375,7 @@ function renderJourneyControl() {
   renderInspectorContext();
   renderCallouts();
   calibration?.refresh();
+  renderGlobalSession();
 }
 function renderCallouts() {
   atlas?.setGuidedEmphasis(journey.active);
@@ -343,6 +411,10 @@ function navigateStage(position: number, kind: 'step' | 'row' = 'step') {
   const destination = frameAt(trace, position).index;
   // Selecting the current row is not a timer restart or a recovery command.
   if (kind === 'row' && journey.active && destination === state.position) return;
+  if (!admitSession(demoOwner)) {
+    renderPlayback(); // Undo the range control's tentative value on denied acquisition.
+    return;
+  }
   const guidedFocus = navigationFocus(
     kind === 'row' ? { kind, from: state.position, to: destination } : { kind },
     journey.guidedFocus,
@@ -536,7 +608,7 @@ function renderStages() {
   }
 }
 function seek(position: number, options: { preserveView?: boolean; canonical?: boolean } = {}) {
-  if (journey.completed) updateJourney({ type: 'NAVIGATE' });
+  if (journey.completed && !updateJourney({ type: 'NAVIGATE' })) return;
   const previousScene = state.scene;
   const previousOfficialScene = frame.scene;
   frame = frameAt(trace, position);
@@ -558,6 +630,7 @@ function seek(position: number, options: { preserveView?: boolean; canonical?: b
   renderPlayback();
 }
 function restartJourney() {
+  if (!admitSession(demoOwner, true)) return;
   rememberExplorationView();
   readingHold.clear();
   updateJourney({ type: 'START' });
@@ -725,6 +798,8 @@ async function send() {
     openSettings();
     return;
   }
+  // Admission precedes request cancellation, history changes and trace replacement.
+  if (!admitSession(demoOwner)) return;
   // Browsing a branch can change the teaching scenario during a live request.
   // A subsequent text request restores its own timeline without cancelling twice.
   if (mode === 'live' && state.scenario !== 'text') {
@@ -788,6 +863,10 @@ async function send() {
   }
 }
 function chooseScenario(id: string) {
+  if (journey.completed && !admitSession(demoOwner)) {
+    $<HTMLSelectElement>('scenario').value = state.scenario;
+    return;
+  }
   cancelRequest();
   setPlaying(false);
   readingHold.clear();
@@ -854,7 +933,7 @@ document.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('button, a');
   if (!b) return;
   if (b.dataset.workspace && workspaces.some(({ id }) => id === b.dataset.workspace)) {
-    switchWorkspace(b.dataset.workspace as WorkspaceId);
+    navigate({ kind: 'workspace', destination: { workspace: b.dataset.workspace as WorkspaceId } });
     return;
   }
   if (workspace !== 'DEMO' && (b.id === 'home' || b.closest('#demo-host'))) {
@@ -870,14 +949,28 @@ document.addEventListener('click', (e) => {
   }
   if (b.dataset.searchConcept) {
     $<HTMLDialogElement>('search-dialog').close();
-    if (workspace === 'EXPLORE') {
-      explore.openConcept(b.dataset.searchConcept);
-      return;
-    }
-    selectConcept(b.dataset.searchConcept);
-    showPanel('inspector');
+    navigate({ kind: 'local-concept', conceptId: b.dataset.searchConcept });
+    return;
   }
   switch (b.id) {
+    case 'global-session-return':
+      if (sessions.current) navigate({ kind: 'return-session', sessionId: sessions.current.id });
+      break;
+    case 'global-session-end':
+      if (sessions.current) sessions.end(sessions.current.id);
+      document.querySelector<HTMLElement>(`.workspace-nav [data-workspace="${workspace}"]`)?.focus();
+      break;
+    case 'session-conflict-return':
+    case 'session-conflict-end':
+    case 'session-conflict-cancel': {
+      const id = conflictSession;
+      conflictSession = undefined;
+      $<HTMLDialogElement>('session-conflict').close();
+      if (id && b.id === 'session-conflict-return') navigate({ kind: 'return-session', sessionId: id });
+      if (id && b.id === 'session-conflict-end') sessions.end(id);
+      renderGlobalSession();
+      break;
+    }
     case 'home':
       e.preventDefault();
       goScene('world');
@@ -941,11 +1034,13 @@ document.addEventListener('click', (e) => {
       restartJourney();
       break;
     case 'stop-tour':
+      stopJourney();
+      break;
     case 'explore-freely':
       if (b.id === 'explore-freely' && !journey.completed) break;
       // Release ownership and any pending focus without changing the current view.
       atlas?.cancelFocus();
-      updateJourney({ type: b.id === 'explore-freely' ? 'EXPLORE' : 'STOP' });
+      updateJourney({ type: 'EXPLORE' });
       break;
     case 'complete-tour':
       if (journey.active && journey.journeyMode === 'MANUAL' && state.position === trace.length - 1)
@@ -1068,6 +1163,10 @@ document.addEventListener('change', (e) => {
   }
   if (el.id === 'scenario') chooseScenario(el.value);
   if (el.id === 'route') {
+    if (journey.completed && !admitSession(demoOwner)) {
+      el.value = state.local ? 'local' : 'remote';
+      return;
+    }
     state.local = el.value === 'local';
     atlas?.setLocal(state.local);
     trace = makeTrace(state.scenario, state.local);
@@ -1077,6 +1176,10 @@ document.addEventListener('change', (e) => {
   if (el.id === 'speed') state.speed = Number(el.value);
   if (el.id === 'journey-mode') updateJourney({ type: 'SET_MODE', mode: el.value as JourneyMode });
   if (el.id === 'mode') {
+    if (el.value === 'live' && state.scenario !== 'text' && journey.completed && !admitSession(demoOwner)) {
+      el.value = mode;
+      return;
+    }
     cancelRequest();
     mode = el.value as 'demo' | 'live';
     updateMode();
@@ -1335,6 +1438,7 @@ import('./scene.ts')
               active: journey.active,
             }),
             choose: (index) => {
+              if (!admitSession(demoOwner)) return;
               updateJourney({ type: 'SET_MODE', mode: 'MANUAL' });
               updateJourney({ type: 'START' });
               seek(index);
