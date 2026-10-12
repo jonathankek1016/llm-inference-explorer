@@ -59,7 +59,12 @@ export class ReadingHold {
 export function observeReading(root: Document, hold: ReadingHold, read: () => ReadingContext) {
   const activity = (event: Event) => {
     const element = event.target instanceof Element ? event.target : null;
-    if (!element || element.closest('[data-concept], [data-scene], [data-search-concept], #next-decode'))
+    if (
+      !element ||
+      element.closest(
+        '[data-concept], [data-scene], [data-search-concept], [data-explore-reference], #next-decode',
+      )
+    )
       return;
     if (event.type === 'focusin' && !element.matches(':focus-visible')) return;
     const context = read();

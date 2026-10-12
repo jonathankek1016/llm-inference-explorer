@@ -3455,3 +3455,26 @@ select option {
     --atlas-edge: calc(var(--masthead-height) + 12rem);
   }
 }
+.concept-usages details {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+.concept-usages summary {
+  cursor: pointer;
+  line-height: 1.6;
+}
+.concept-usages .explore-reference-links button {
+  text-align: left;
+  line-height: 1.6;
+}
+.explore-reference-action {
+  margin-top: 14px;
+}
+.demo-context h3 {
+  margin-top: 12px;
+}
+.usage-preservation {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}

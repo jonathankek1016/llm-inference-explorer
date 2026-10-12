@@ -102,7 +102,7 @@ test('tabs, deeper details, selection/copy, keyboard and guided callout use boun
   }
   await page.getByText('Stage overview', { exact: true }).click();
   await hold(page);
-  await page.locator('#inspector-body > p').selectText();
+  await page.locator('#inspector-body .demo-context > p').first().selectText();
   await page.keyboard.press('Control+c');
   await hold(page);
   await page.locator('#sources-tab').focus();

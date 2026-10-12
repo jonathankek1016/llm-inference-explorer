@@ -41,6 +41,9 @@ import type { SessionOwner } from './guided-session.ts';
 import { ExploreBrowser } from './explore.ts';
 import { ExploreAtlas } from './explore-scene.ts';
 import { categoryById, conceptRegistry, searchConceptRegistry } from './concept-registry.ts';
+import { usageGraph, demoUsagePresentation } from './usage-graph.ts';
+import type { DemoUsage } from './usage-graph.ts';
+import { demoContext } from './content-overlays.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -174,6 +177,11 @@ let config: ProviderConfig = {
 };
 $('app').innerHTML = shell;
 const explore = new ExploreBrowser($('explore-workspace'));
+explore.onDemoUsage = (usageId) => navigate({ kind: 'demo-usage', usageId });
+$('demo-usage-preview').addEventListener('close', () => {
+  document.querySelector<HTMLElement>('.workspace-nav [data-workspace="DEMO"]')?.focus();
+});
+let demoReferenceUsage: DemoUsage | undefined;
 let exploreAtlas: ExploreAtlas | undefined;
 let sceneClass: typeof AtlasScene | undefined;
 function showWorkspaceVisuals() {
@@ -235,6 +243,9 @@ function switchWorkspace(destination: WorkspaceId) {
 }
 function navigate(intent: NavigationIntent) {
   switch (intent.kind) {
+    case 'demo-usage':
+      openDemoUsage(intent.usageId);
+      break;
     case 'workspace':
       sessions.browse(intent.destination);
       switchWorkspace(intent.destination.workspace);
@@ -256,6 +267,53 @@ function navigate(intent: NavigationIntent) {
       document.querySelector<HTMLElement>(`.workspace-nav [data-workspace="${workspace}"]`)?.focus();
       break;
   }
+}
+function demoContextMarkup(usage: DemoUsage) {
+  const context = demoContext(usage);
+  return `<section class="demo-context"><span class="eyebrow">AUTHORED DEMO CONTEXT</span>
+    <h3>${esc(context.scenarioTitle)}</h3><p>${esc(context.scenarioContext)}</p>
+    <p class="small">${usage.local ? 'On-device' : 'Cloud service'} · Authored stage ${usage.stageIndex + 1} / ${usage.stageCount}${usage.occurrence > 1 ? ` · Occurrence ${usage.occurrence}` : ''}</p>
+    <p>${esc(context.explanation)}</p>
+    <dl class="io"><div><dt>INPUT</dt><dd>${esc(context.input)}</dd></div><div><dt>OUTPUT</dt><dd>${esc(context.output)}</dd></div></dl>
+    <p class="small">${context.previousId ? `Before: ${esc(concepts[context.previousId].title)}. ` : ''}${context.nextId ? `Next: ${esc(concepts[context.nextId].title)}.` : 'Final authored stage.'}</p>
+    <p class="small">Illustrative lesson context, not evidence of provider execution.</p></section>`;
+}
+function openDemoUsage(id: string) {
+  const usage = usageGraph.location(id);
+  if (!usage || usage.workspace !== 'DEMO') return;
+  sessions.browse(demoCompatibilityHost);
+  switchWorkspace('DEMO');
+  if (demoUsagePresentation(journey.active, gate.status === 'running') === 'reference-preview') {
+    // There is one Demo host. Read the destination without replacing its retained
+    // incomplete/completed lesson, view, Inspector, history or in-flight request.
+    $('demo-usage-preview-title').textContent = concepts[usage.conceptId].title;
+    $('demo-usage-preview-body').innerHTML =
+      `<p class="usage-preservation">Reference preview only. Your ${journey.completed ? 'completed presentation' : journey.active ? 'incomplete journey' : 'running request'} is retained unchanged. To open this location in the atlas, return to Free exploration${gate.status === 'running' ? ' after the request finishes' : ''} and choose the usage again.</p>${demoContextMarkup(usage)}`;
+    $<HTMLDialogElement>('demo-usage-preview').showModal();
+    return;
+  }
+  rememberExplorationView();
+  // A reference destination is not stage navigation: keep the new trace at its
+  // initial playhead, select its exhibit separately, and never acquire a session.
+  state.scenario = usage.scenarioId;
+  state.local = usage.local;
+  $<HTMLSelectElement>('scenario').value = state.scenario;
+  $<HTMLSelectElement>('route').value = state.local ? 'local' : 'remote';
+  atlas?.setLocal(state.local);
+  trace = makeTrace(state.scenario, state.local);
+  frame = frameAt(trace, 0);
+  state.position = 0;
+  stageElapsed = 0;
+  atlas?.setProgress(0, 0);
+  $('journey-name').textContent = scenarios[state.scenario].name;
+  $('journey-description').textContent = scenarios[state.scenario].subtitle;
+  $('example').textContent = scenarios[state.scenario].prompt + ' ↗';
+  demoReferenceUsage = usage;
+  state.inspector = 'learn';
+  selectConcept(usage.conceptId, { pause: false, focus: true });
+  renderPlayback();
+  showPanel('inspector');
+  $('inspector-body').focus({ preventScroll: true });
 }
 let conflictSession: GuidedSessionId | undefined;
 function admitSession(owner: SessionOwner, fresh = false): boolean {
@@ -641,6 +699,7 @@ function renderStages() {
 }
 function seek(position: number, options: { preserveView?: boolean; canonical?: boolean } = {}) {
   if (journey.completed && !updateJourney({ type: 'NAVIGATE' })) return;
+  demoReferenceUsage = undefined;
   const previousScene = state.scene;
   const previousOfficialScene = frame.scene;
   frame = frameAt(trace, position);
@@ -702,13 +761,25 @@ function renderInspector() {
   const c = concepts[state.selected];
   renderInspectorContext();
   $('inspector-header').innerHTML =
-    `<div class="concept-symbol">${icon(c.scene === 'world' ? 'expand' : 'cube')}</div><span class="eyebrow">${c.category}</span><h2>${c.title}</h2><p>${c.short}</p>`;
+    `<div class="concept-symbol">${icon(c.scene === 'world' ? 'expand' : 'cube')}</div><span class="eyebrow">${c.category}</span><h2>${c.title}</h2><p>${c.short}</p><button class="explore-reference-action text-button" data-explore-reference="${esc(c.id)}">Explore this concept ${icon('expand')}</button>`;
+  const locations = usageGraph
+    .forConcept(c.id)
+    .filter(
+      (usage): usage is DemoUsage =>
+        usage.workspace === 'DEMO' && usage.scenarioId === state.scenario && usage.local === state.local,
+    );
+  const contextUsage =
+    !journey.active &&
+    demoReferenceUsage?.conceptId === c.id &&
+    locations.some((usage) => usage.id === demoReferenceUsage!.id)
+      ? demoReferenceUsage
+      : (locations.find((usage) => usage.stageId === frame.event.id) ?? locations[0]);
   ['learn', 'data', 'sources'].forEach((t) =>
     $(`${t}-tab`).setAttribute('aria-selected', String(state.inspector === t)),
   );
   if (state.inspector === 'learn')
     $('inspector-body').innerHTML =
-      `<h3>Deeper context</h3><p>${c.deeper}</p><dl class="io"><div><dt>↳ INPUT</dt><dd>${c.input}</dd></div><div><dt>↗ OUTPUT</dt><dd>${c.output}</dd></div></dl>${c.enter ? `<button class="enter-scene" data-scene="${c.enter}">Inspect ${c.enter === 'compute' ? 'the hardware' : c.enter === 'model' ? 'inference' : 'this block'} ${icon('expand')}</button>` : ''}<details class="deeper"><summary>Stage overview</summary><p>${c.description}</p></details><div class="related"><h3>Connected concepts</h3>${c.related.map((id) => `<button data-concept="${id}">${concepts[id].title} <span>↗</span></button>`).join('')}</div>`;
+      `${contextUsage ? `${!journey.active || c.id !== frame.event.conceptId ? '<p class="small">Reference location · not the current guided stage.</p>' : ''}${demoContextMarkup(contextUsage)}` : `<h3>Exploratory concept</h3><p>This concept has no authored stage in ${esc(scenarios[state.scenario].name)}. Open Explore for its canonical reference.</p>`}${c.enter ? `<button class="enter-scene" data-scene="${c.enter}">Inspect ${c.enter === 'compute' ? 'the hardware' : c.enter === 'model' ? 'inference' : 'this block'} ${icon('expand')}</button>` : ''}<details class="deeper"><summary>Stage overview</summary><p>${c.description}</p><h3>Deeper reference</h3><p>${c.deeper}</p></details><div class="related"><h3>Connected concepts</h3>${c.related.map((id) => `<button data-concept="${id}">${concepts[id].title} <span>↗</span></button>`).join('')}</div>`;
   else if (state.inspector === 'sources')
     $('inspector-body').innerHTML =
       `<h3>Grounded in public documentation</h3><p>These sources describe the underlying concepts, not a trace of your selected provider.</p><div class="source-list">${c.sources.map((id) => `<a href="${sources[id].url}" target="_blank" rel="noreferrer">${sources[id].title} ${icon('expand')}</a>`).join('')}</div><h3>What is simplified</h3><p>${c.deeper}</p>`;
@@ -973,6 +1044,10 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (b.closest('#explore-workspace') || b.classList.contains('object-label')) return;
+  if (b.dataset.exploreReference) {
+    navigate({ kind: 'explore-concept', conceptId: b.dataset.exploreReference });
+    return;
+  }
   if (b.dataset.close) $<HTMLDialogElement>(b.dataset.close).close();
   if (b.dataset.scene) goScene(b.dataset.scene as SceneId);
   if (b.dataset.concept) selectConcept(b.dataset.concept);

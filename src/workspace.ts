@@ -22,6 +22,7 @@ export const workspaces: readonly { id: WorkspaceId; label: string }[] = [
 
 /** Destination intent is explicit even when two workspaces show the same concept. */
 export type NavigationIntent =
+  | { kind: 'demo-usage'; usageId: string }
   | { kind: 'local-concept'; conceptId: string }
   | { kind: 'explore-concept'; conceptId: string }
   | { kind: 'workspace'; destination: WorkspaceDestination }

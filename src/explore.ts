@@ -9,6 +9,8 @@ import {
 } from './concept-registry.ts';
 import { exploreGalleries } from './explore-catalogue.ts';
 import { icon } from './icons.ts';
+import { usageGraph } from './usage-graph.ts';
+import { scenarios } from './content.ts';
 import type { CategoryId } from './concept-registry.ts';
 
 export interface ExploreState {
@@ -45,6 +47,7 @@ const conceptLink = (id: string, current: string | null = null) =>
 export class ExploreBrowser {
   private state = initialExploreState();
   onNavigate?: (state: ExploreState) => void;
+  onDemoUsage?: (usageId: string) => void;
   private referenceScroll = new Map<string, number>();
   private referenceKey() {
     return this.state.conceptId ? `concept:${this.state.conceptId}` : `category:${this.state.categoryId}`;
@@ -90,6 +93,7 @@ export class ExploreBrowser {
       }
       if (button?.dataset.exploreCategory) this.navigate({ categoryId: button.dataset.exploreCategory });
       if (button?.dataset.exploreConcept) this.navigate({ conceptId: button.dataset.exploreConcept });
+      if (button?.dataset.demoUsage) this.onDemoUsage?.(button.dataset.demoUsage);
     });
     this.render();
   }
@@ -166,12 +170,29 @@ export class ExploreBrowser {
   private reference(id: string): string {
     const concept = conceptRegistry[id];
     const reference = exploreReference(id)!;
+    const usages = usageGraph.forConcept(id).filter((usage) => usage.workspace === 'DEMO');
+    const usageSection = `<section class="concept-usages"><h2>Used in Demo</h2>
+      <p class="small">Authored lesson locations. Opening a location does not start a journey.</p>
+      ${
+        usages.length
+          ? Object.values(scenarios)
+              .map((scenario) => {
+                const locations = usages.filter((usage) => usage.scenarioId === scenario.id);
+                return locations.length
+                  ? `<details><summary>${escape(scenario.name)} <span class="small">(${locations.length} locations)</span></summary><div class="explore-reference-links">${locations.map((usage) => `<button data-demo-usage="${escape(usage.id)}"><span>${usage.local ? 'On-device' : 'Cloud service'} · Stage ${usage.stageIndex + 1} / ${usage.stageCount} · ${escape(concept.title)}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></details>`
+                  : '';
+              })
+              .join('')
+          : '<p class="small">No authored Demo stages currently use this concept.</p>'
+      }
+    </section>`;
     return `<p class="explore-summary">${escape(concept.summary)}</p>
       <p>${escape(reference.explanation)}</p>
       <h2>Deeper context</h2><p>${escape(reference.deeper)}</p>
       <dl class="io"><div><dt>INPUT</dt><dd>${escape(reference.input)}</dd></div><div><dt>OUTPUT</dt><dd>${escape(reference.output)}</dd></div></dl>
       <p class="explore-note">Conceptual reference, not evidence of a live request. Examples and spatial descriptions refer to the atlas’s illustrative models.</p>
       ${concept.connectedIds.length ? `<section class="related"><h2>Connected concepts</h2><div class="explore-reference-links">${concept.connectedIds.map((related) => conceptLink(related)).join('')}</div></section>` : ''}
+      ${usageSection}
       <section><h2>Sources</h2><div class="source-list">${referenceSources(id)
         .map(
           (source) =>
