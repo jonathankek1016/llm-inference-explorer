@@ -3364,7 +3364,6 @@ select option {
 }
 .global-session button {
   border-color: transparent;
-  border-radius: 1rem;
 }
 #app[data-workspace='EXPLORE'][data-guided-session] .explore-workspace {
   --atlas-edge: calc(var(--masthead-height) + 7rem);
