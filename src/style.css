@@ -952,7 +952,8 @@ svg {
 .explode-control output {
   font: 0.5625rem monospace;
 }
-.playback {
+.playback,
+.live-playback {
   position: absolute;
   left: calc(var(--left) + var(--margin) + 1.875rem);
   right: calc(var(--right) + var(--margin) + 1.875rem);
@@ -988,7 +989,8 @@ svg {
   letter-spacing: 1.25px;
   white-space: nowrap;
 }
-#playback-position {
+#playback-position,
+#live-position {
   font: 0.5625rem monospace;
   color: var(--muted);
   white-space: nowrap;
@@ -1087,13 +1089,15 @@ input[type='range']::-webkit-slider-thumb {
   border: 2px solid var(--panel);
   box-shadow: 0 0 0 1px var(--accent-line);
 }
-#timeline {
+#timeline,
+#live-timeline {
   /* Enlarge the hit area without moving the visible track or nearby controls. */
   height: 1.25rem;
   margin-block: -0.53125rem;
   background: linear-gradient(var(--line), var(--line)) center / 100% 0.1875rem no-repeat;
 }
-#speed {
+#speed,
+#live-speed {
   font-size: 0.625rem;
   width: 2.6875rem;
   border: 0;
@@ -1772,7 +1776,8 @@ dialog form > input:not([type='checkbox']) {
   .object-label {
     font-size: 0.6875rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     bottom: 3.75rem;
     padding: 1.125rem 1.5625rem;
   }
@@ -1830,7 +1835,8 @@ dialog form > input:not([type='checkbox']) {
   .scene-intro #breadcrumbs button {
     font-size: 0.5625rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     left: calc(var(--left) + 1.875rem);
     right: calc(var(--right) + 1.875rem);
     padding: 0.8125rem;
@@ -2078,7 +2084,8 @@ dialog form > input:not([type='checkbox']) {
     padding: 0.3125rem;
     border-radius: 0.3125rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     left: 0.75rem;
     right: 0.75rem;
     bottom: 3rem;
@@ -2242,7 +2249,8 @@ dialog form > input:not([type='checkbox']) {
   .mobile-controls {
     bottom: 8.125rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     bottom: 2.125rem;
     padding: 0.75rem 0.9375rem;
   }
@@ -2283,7 +2291,8 @@ dialog form > input:not([type='checkbox']) {
   .scene-tools {
     bottom: 9.1875rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     bottom: 2.5rem;
     padding: 0.75rem 1rem;
   }
@@ -2520,7 +2529,8 @@ html {
   .scene-intro h1 {
     font-size: 1.2rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     padding: 0.75rem;
   }
   .playback-top {
@@ -2573,7 +2583,8 @@ html {
   .mobile-controls {
     bottom: 8.3rem;
   }
-  .playback {
+  .playback,
+  .live-playback {
     bottom: 2rem;
   }
   .journey-panel,
@@ -3476,4 +3487,254 @@ select option {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 0.6rem;
+}
+
+/* Live retains an independent full-canvas educational view and runtime panels. */
+.live-workspace {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  --live-edge: calc(var(--masthead-height) + 4.5rem);
+}
+.live-workspace[aria-hidden='true'] {
+  visibility: hidden;
+  opacity: 0;
+}
+#live-viewport {
+  inset: 0;
+  pointer-events: auto;
+}
+#live-framing {
+  position: absolute;
+  left: 23rem;
+  right: 23rem;
+  top: calc(var(--live-edge) + 2rem);
+  bottom: 12rem;
+}
+.live-workspace .panel,
+.live-workspace button,
+.live-workspace select {
+  pointer-events: auto;
+}
+.live-runtime,
+.live-inspector {
+  position: absolute;
+  top: var(--live-edge);
+  bottom: 12rem;
+  width: 20rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.live-runtime {
+  left: var(--margin);
+}
+.live-inspector {
+  right: var(--margin);
+}
+.live-panel-body {
+  overflow: auto;
+  padding: 1.1rem;
+  min-height: 0;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.live-panel-body h2 {
+  font-size: 1.15rem;
+  margin-bottom: 0.8rem;
+}
+.live-panel-body h3 {
+  font-size: 0.95rem;
+  margin-top: 1rem;
+}
+.live-panel-body p {
+  margin: 0.65rem 0;
+}
+.live-panel-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 0.72rem/1.65 var(--font-mono, monospace);
+  max-height: 17rem;
+  overflow: auto;
+}
+.live-panel-body details {
+  border-top: 1px solid var(--line);
+  padding: 0.7rem 0;
+}
+.live-panel-body summary {
+  cursor: pointer;
+}
+#live-form label {
+  display: block;
+  margin-top: 0.8rem;
+}
+#live-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 5rem;
+  max-height: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  background: var(--panel-solid);
+  color: var(--text);
+}
+.live-runtime .compose-actions {
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  gap: 0.5rem;
+}
+.live-runtime .compose-actions button {
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.65rem;
+}
+.live-panel-body .live-section-title {
+  font-size: 0.85rem;
+  margin-top: 1.2rem;
+}
+.live-section-title .eyebrow {
+  display: block;
+  margin-top: 0.4rem;
+}
+.live-response {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-left: 2px solid var(--accent);
+  padding-left: 0.75rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+.live-provenance {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  background: var(--accent-soft);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  font-size: 0.7rem;
+}
+#live-stages button {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+  border-radius: 0.4rem;
+}
+#live-stages button[aria-current] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+#live-stages small {
+  color: var(--muted);
+}
+.live-camera {
+  right: 23rem;
+}
+#live-playback {
+  left: var(--margin);
+  right: var(--margin);
+  width: auto;
+}
+.live-visual-note {
+  position: absolute;
+  bottom: 1rem;
+  left: var(--margin);
+  right: var(--margin);
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+.live-panel-toggles {
+  position: absolute;
+  top: calc(var(--live-edge) - 2rem);
+  left: var(--margin);
+  display: flex;
+  gap: 0.5rem;
+}
+.live-panel-toggles button {
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel-solid);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.7rem;
+}
+.live-fallback {
+  position: absolute;
+  top: 45%;
+  left: 25%;
+  right: 25%;
+  text-align: center;
+}
+@media (max-width: 1249px) {
+  .live-workspace {
+    --live-edge: calc(var(--masthead-height) + 7rem);
+  }
+  .live-runtime,
+  .live-inspector {
+    width: 17rem;
+  }
+  #live-framing {
+    left: 19rem;
+    right: 19rem;
+  }
+  .live-camera {
+    right: 19rem;
+  }
+}
+@media (max-width: 980px) {
+  #app[data-guided-session] .live-workspace {
+    --live-edge: calc(var(--masthead-height) + 11rem);
+  }
+  #live-framing {
+    left: 1rem;
+    right: 1rem;
+    top: calc(var(--live-edge) + 1rem);
+  }
+  .live-workspace .live-runtime,
+  .live-workspace .live-inspector {
+    display: none;
+    top: calc(var(--live-edge) + 2.4rem);
+    bottom: 12rem;
+    max-height: none;
+    width: min(24rem, calc(100% - 2 * var(--margin)));
+    z-index: 9;
+    background: var(--panel-solid);
+  }
+  .live-workspace[data-sheet='runtime'] .live-runtime,
+  .live-workspace[data-sheet='inspector'] .live-inspector {
+    display: flex;
+  }
+  .live-camera {
+    right: var(--margin);
+  }
+  .live-panel-toggles {
+    z-index: 10;
+    top: var(--live-edge);
+  }
+  .live-workspace .scene-intro h1 {
+    font-size: 1.25rem;
+  }
+  #live-playback {
+    padding: 0.75rem;
+  }
+  #live-playback .playback-top {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  #live-playback .playback-controls {
+    gap: 0.4rem;
+  }
+  #live-playback .timeline-wrap {
+    min-width: 0;
+  }
+  #live-playback #live-replay {
+    max-width: 5rem;
+    font-size: 0.65rem;
+  }
+  .live-visual-note {
+    bottom: 0.3rem;
+  }
 }

@@ -56,11 +56,17 @@ export class ReadingHold {
 }
 
 /** One delegated lifecycle survives Inspector tab renders and keyed callout updates. */
-export function observeReading(root: Document, hold: ReadingHold, read: () => ReadingContext) {
+export function observeReading(
+  root: Document,
+  hold: ReadingHold,
+  read: () => ReadingContext,
+  options: { scope?: HTMLElement; inspector?: string } = {},
+) {
   const activity = (event: Event) => {
     const element = event.target instanceof Element ? event.target : null;
     if (
       !element ||
+      (options.scope && !options.scope.contains(element)) ||
       element.closest(
         '[data-concept], [data-scene], [data-search-concept], [data-explore-reference], #next-decode',
       )
@@ -72,7 +78,10 @@ export function observeReading(root: Document, hold: ReadingHold, read: () => Re
     // gestures establish a lease first; layout-driven scrolls cannot start one.
     const deliberate = (surface: ReadingSurface) =>
       !['scroll', 'toggle'].includes(event.type) || hold.has(surface);
-    if (element.closest('#inspector-header, #inspector-body, .inspector-tabs') && deliberate('inspector'))
+    if (
+      element.closest(options.inspector ?? '#inspector-header, #inspector-body, .inspector-tabs') &&
+      deliberate('inspector')
+    )
       hold.activity('inspector', context, performance.now());
     const card = element.closest<HTMLElement>('.world-callout[data-role="guided"]');
     if (card && !card.hidden && card.dataset.subject === context.subject && deliberate('callout'))

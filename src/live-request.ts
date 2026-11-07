@@ -77,6 +77,16 @@ interface RequestRecord {
  * are rejected until explicit cancellation or a terminal result; never replaced.
  * No journey, global session, root selection, renderer, persistence or credentials store. */
 export class LiveRequests {
+  private readonly listeners = new Set<(snapshot: LiveRequestSnapshot) => void>();
+  subscribe(listener: (snapshot: LiveRequestSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  private publish(record: RequestRecord) {
+    const snapshot = this.get(record.id)!;
+    // Deliver immutable transition snapshots after start() has returned its identity.
+    queueMicrotask(() => this.listeners.forEach((listener) => listener(snapshot)));
+  }
   private readonly gate = new RunGate();
   private readonly records = new Map<LiveRequestId, RequestRecord>();
   private latest?: LiveRequestId;
@@ -159,6 +169,7 @@ export class LiveRequests {
       kind: 'request-state',
       evidence: observed(record.state, 'APPLICATION', 'Local request lifecycle transition'),
     });
+    this.publish(record);
   }
   private move(record: RequestRecord, next: LiveRequestState) {
     if (transitionRequest(record.state, next) === record.state) return false;
@@ -225,6 +236,7 @@ export class LiveRequests {
           'Transport invoked with these options; this is not proof of backend support or receipt',
         ),
       });
+      this.publish(record);
       const result = await this.transport(input.config, messages, signal, (text) => {
         if (!this.accepts(record) || record.state !== 'RUNNING') return;
         record.log.append({
@@ -237,6 +249,7 @@ export class LiveRequests {
             'Cumulative text exposed by the existing transport; not a raw network packet or token boundary',
           ),
         });
+        this.publish(record);
       });
       if (!this.accepts(record)) return;
       this.move(record, 'COMPLETING');

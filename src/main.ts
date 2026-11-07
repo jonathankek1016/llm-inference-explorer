@@ -44,6 +44,7 @@ import { categoryById, conceptRegistry, searchConceptRegistry } from './concept-
 import { usageGraph, demoUsagePresentation } from './usage-graph.ts';
 import type { DemoUsage } from './usage-graph.ts';
 import { demoContext } from './content-overlays.ts';
+import { LiveWorkspace } from './live-workspace.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) =>
@@ -177,6 +178,15 @@ let config: ProviderConfig = {
 };
 $('app').innerHTML = shell;
 const explore = new ExploreBrowser($('explore-workspace'));
+const live = new LiveWorkspace($('live-workspace'), {
+  sessions,
+  admit: admitSession,
+  changed: renderGlobalSession,
+  navigate,
+  config: () => config,
+  settings: () => openSettings(),
+  navigation: () => navigationPreferences,
+});
 explore.onDemoUsage = (usageId) => navigate({ kind: 'demo-usage', usageId });
 $('demo-usage-preview').addEventListener('close', () => {
   document.querySelector<HTMLElement>('.workspace-nav [data-workspace="DEMO"]')?.focus();
@@ -198,6 +208,14 @@ function showWorkspaceVisuals() {
     }
   }
   exploreAtlas?.setVisible(workspace === 'EXPLORE');
+  live.setVisible(workspace === 'LIVE');
+  if (workspace === 'LIVE' && sceneClass) {
+    live.ensureScene(sceneClass);
+    live.scene?.setDark(state.dark);
+    live.scene?.setGrid(groundGrid);
+    live.scene?.setGridIntensity(gridIntensity);
+    live.scene?.setPalette(appearance);
+  }
 }
 function exploreFallback() {
   exploreAtlas?.dispose();
@@ -214,7 +232,7 @@ function exploreFallback() {
 $('app').dataset.workspace = workspace;
 $('demo-host').dataset.workspaceInstance = demoCompatibilityHost.instanceId;
 function switchWorkspace(destination: WorkspaceId) {
-  const returningFromScaffold = !!document.activeElement?.closest('#workspace-scaffold');
+  const returningFromScaffold = !!document.activeElement?.closest('#live-workspace');
   workspace = destination;
   $('app').dataset.workspace = workspace;
   const demo = workspace === 'DEMO';
@@ -228,11 +246,9 @@ function switchWorkspace(destination: WorkspaceId) {
   $('search-open').inert = workspace === 'LIVE';
   $('search-open').style.visibility = workspace === 'LIVE' ? 'hidden' : '';
   $('explore-workspace').hidden = workspace !== 'EXPLORE';
-  $('workspace-scaffold').hidden = workspace !== 'LIVE';
+  $('live-workspace').inert = workspace !== 'LIVE';
+  $('live-workspace').setAttribute('aria-hidden', String(workspace !== 'LIVE'));
   showWorkspaceVisuals();
-  $('workspace-title').textContent = 'Live Lab';
-  $('workspace-description').textContent =
-    'A dedicated workspace for real inputs and observable request evidence. The V4 Live Lab experience is not implemented yet.';
   document.querySelectorAll<HTMLElement>('.workspace-nav [data-workspace]').forEach((button) => {
     if (button.dataset.workspace === workspace) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -356,7 +372,7 @@ function readingContext() {
       !panel.classList.contains('collapsed') && (innerWidth > 980 || panel.classList.contains('mobile-open')),
   };
 }
-observeReading(document, readingHold, readingContext);
+observeReading(document, readingHold, readingContext, { scope: $('demo-host') });
 function renderInspectorContext() {
   const current = journey.active && state.selected === frame.event.conceptId;
   $('inspector-panel').dataset.subjectRole = current ? 'current' : 'exploration';
@@ -378,6 +394,7 @@ function applyAppearance() {
   document.documentElement.dataset.palette = appearance.palette;
   atlas?.setPalette(appearance);
   exploreAtlas?.scene.setPalette(appearance);
+  live.scene?.setPalette(appearance);
   save('atlas-appearance', appearance);
   document.querySelectorAll<HTMLInputElement>('input[name="palette"]').forEach((input) => {
     input.checked = input.value === appearance.palette;
@@ -408,6 +425,8 @@ function setPlaying(value: boolean) {
   updateJourney({ type: value ? 'PLAY' : 'PAUSE' });
 }
 function updateJourney(action: JourneyAction) {
+  if (action.type === 'SET_SUSPENSION' && action.reason !== 'READING_HOLD')
+    live.suspend(action.reason, action.suspended);
   const starting = !journey.active;
   const wasAdvancing = journeyAdvancing(journey);
   const next = transitionJourney(journey, action);
@@ -1088,6 +1107,7 @@ document.addEventListener('click', (e) => {
       save('atlas-theme', state.dark ? 'dark' : 'light');
       atlas?.setDark(state.dark);
       exploreAtlas?.scene.setDark(state.dark);
+      live.scene?.setDark(state.dark);
       applyAppearance();
       renderDarkPreference();
       b.setAttribute('aria-label', state.dark ? 'Toggle light theme' : 'Toggle dark theme');
@@ -1310,6 +1330,7 @@ $('settings-form').addEventListener('submit', (e) => {
     if (!config.model) throw new Error('Enter a model identifier.');
     const { key: _key, ...safe } = config;
     save('atlas-provider', safe);
+    live.refreshConfiguration();
     $<HTMLDialogElement>('settings-dialog').close();
     toast('Connection saved. Your key stays in this tab’s memory.');
   } catch (err) {
@@ -1440,6 +1461,7 @@ $('ground-grid').addEventListener('change', () => {
   save('atlas-ground-grid', groundGrid);
   atlas?.setGrid(groundGrid);
   exploreAtlas?.scene.setGrid(groundGrid);
+  live.scene?.setGrid(groundGrid);
   renderGridPreference();
 });
 intensityControl.addEventListener('input', () => {
@@ -1447,6 +1469,7 @@ intensityControl.addEventListener('input', () => {
   save('atlas-grid-intensity', gridIntensity);
   atlas?.setGridIntensity(gridIntensity);
   exploreAtlas?.scene.setGridIntensity(gridIntensity);
+  live.scene?.setGridIntensity(gridIntensity);
   renderGridPreference();
 });
 const darkControl = $<HTMLInputElement>('dark-appearance');
@@ -1578,5 +1601,6 @@ window.addEventListener('pagehide', () => {
   gate.cancel();
   atlas?.dispose();
   exploreAtlas?.dispose();
+  live.dispose();
 });
 if (legacyNotice) toast('The old saved API key was removed. Re-enter it in Settings to use live mode.');
