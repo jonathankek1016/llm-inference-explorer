@@ -18,6 +18,8 @@ export const liveEventKinds = [
   'generation-metadata',
   'request-sent',
   'text-update',
+  'tool-call',
+  'source-reference',
   'result-text',
   'usage',
   'finish-reason',

@@ -1,3 +1,5 @@
+import type { ProviderObservation } from './live-observations.ts';
+import type { LiveEvent } from './live-events.ts';
 import { readImage } from './live-media.ts';
 import type { ImageInput } from './live-media.ts';
 import { mediaDeclarations } from './live-input.ts';
@@ -60,6 +62,28 @@ function evidenceMarkup(evidence: Evidence<unknown>) {
         ? evidence.value
         : JSON.stringify(evidence.value, null, 2);
   return `<span class="live-provenance" data-provenance="${evidence.kind}">${labels[evidence.kind]}</span><p class="small">${esc(evidence.basis)}</p><pre>${esc(value)}</pre>`;
+}
+function observationMarkup(event: ProviderObservation) {
+  const badge = '<span class="live-provenance" data-provenance="OBSERVED">Observed provider field</span>';
+  if (event.kind === 'source-reference')
+    return `${badge}<p><a href="${esc(event.url)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${esc(event.title || event.url)}</a></p><p class="small">Provider citation. Source acquisition is unknown; this does not establish that search or retrieval ran. Source content has not been fetched or verified by this app.</p>`;
+  return `${badge}<h4>${esc(event.name || 'Function name not yet returned')}</h4><p class="small">${event.phase === 'PARTIAL' ? 'Partial call received' : 'Call returned'}${event.providerCallId ? ` \u00b7 ${esc(event.providerCallId)}` : ''}. Execution owner: unknown. No execution or result observed.</p><p class="small">This app cannot execute or continue tool calls. A completed request means the response arrived, not that the requested function ran.</p>${event.arguments !== undefined ? `<details><summary>Returned arguments${event.truncated ? ' (truncated)' : ''}</summary><pre>${esc(event.arguments)}</pre><p class="small">Untrusted provider data; not executed or validated as tool input.</p></details>` : ''}`;
+}
+function latestObservations(events: readonly LiveEvent[]) {
+  const latest = new Map<string, LiveEvent>();
+  for (const event of events)
+    if (
+      (event.kind === 'tool-call' || event.kind === 'source-reference') &&
+      event.evidence.kind !== 'UNKNOWN'
+    )
+      latest.set((event.evidence.value as ProviderObservation).key, event);
+  return [...latest.values()];
+}
+function eventMarkup(event: LiveEvent) {
+  return (event.kind === 'tool-call' || event.kind === 'source-reference') &&
+    event.evidence.kind !== 'UNKNOWN'
+    ? observationMarkup(event.evidence.value as ProviderObservation)
+    : evidenceMarkup(event.evidence);
 }
 interface LivePorts {
   sessions: GuidedSessions;
@@ -468,6 +492,13 @@ export class LiveWorkspace {
       this.requestType === 'TEXT'
         ? `Text transport and client cancellation supported. Backend capabilities are not advertised; sending is an explicit text request. Streaming ${config.stream ? 'requested' : 'off'}; logprobs ${config.logprobs ? 'requested if supported' : 'off'}. Usage and finish reason appear only if returned. No automatic retries.`
         : `Image support is explicitly declared for this connection, not inferred from its name. ${this.requestType === 'IMAGE_GENERATION' ? 'One image via /images/generations. No simulated progress or streaming.' : `Image + text via /chat/completions. Streaming ${config.stream ? 'requested (declared supported)' : 'off'}; logprobs ${config.logprobs ? 'requested (declared supported)' : 'off'}.`} Client cancellation aborts transport; remote computation may continue. Usage and metadata are shown only when returned.`;
+    this.$('capabilities').textContent +=
+      ' Declarations are user supplied, not provider verified; there is no automatic discovery. Chat adapters can read structured function calls and URL citations when returned. App tool execution, MCP, retrieval and web search are unavailable; hidden provider activity remains unknown.';
+    if (this.request) {
+      const caps = this.request.capabilities;
+      this.$('capabilities').textContent +=
+        ` Retained request: ${caps.adapterId}. Image input ${caps.backend.imageText.support} (${caps.backend.imageText.origin}); image generation ${caps.backend.imageGeneration.support} (${caps.backend.imageGeneration.origin}); media return ${caps.backend.generatedMedia.support} (${caps.backend.generatedMedia.origin}). Settings changes apply to subsequent requests.`;
+    }
     const understanding = this.requestType === 'IMAGE_UNDERSTANDING';
     this.$('image-input').hidden = !understanding;
     this.$<HTMLInputElement>('image-file').disabled = !this.configured() || busy || j.active;
@@ -521,6 +552,20 @@ export class LiveWorkspace {
               : 'No returned text.'
             : 'Your response will appear here, independently of teaching playback.';
     this.renderMedia();
+    const observations = latestObservations(this.request?.events ?? []);
+    const observationBody = this.$('observations');
+    observationBody.hidden = !observations.length;
+    const observationKey = observations.map((e) => e.id).join(':');
+    if (observationBody.dataset.revision !== observationKey) {
+      const open = [...observationBody.querySelectorAll('details')].map((d) => d.open);
+      observationBody.innerHTML =
+        '<h2 class="live-section-title">Provider calls & sources</h2>' +
+        observations.map(eventMarkup).join('');
+      observationBody.querySelectorAll('details').forEach((d, i) => {
+        d.open = open[i] ?? false;
+      });
+      observationBody.dataset.revision = observationKey;
+    }
     this.$('receipt-body').innerHTML = this.request
       ? `<p class="small">${esc(this.request.id)}</p><p class="small">${this.request.events
           .filter((e) => e.kind === 'request-state')
@@ -649,8 +694,12 @@ export class LiveWorkspace {
   private renderInspector() {
     const context = this.request && liveContext(this.request, this.selected);
     const current = this.lesson.current;
-    // Streaming updates never replace the reading surface or reset scroll/details.
-    const key = `${this.request?.id}:${this.selected}:${current?.id}:${this.request?.state}`;
+    // Text streaming leaves the reading surface intact; structured evidence refreshes preserve scroll/details.
+    const key = `${this.request?.id}:${this.selected}:${current?.id}:${this.request?.state}:${latestObservations(
+      context?.evidence ?? [],
+    )
+      .map((e) => e.id)
+      .join(':')}`;
     if (key === this.inspectorKey) return;
     this.inspectorKey = key;
     const body = this.$('inspector-body'),
@@ -659,9 +708,12 @@ export class LiveWorkspace {
     const stage = current?.conceptId === this.selected ? current : undefined;
     body.innerHTML = `<h2>${esc(concepts[this.selected].title)}</h2><p>${esc(conceptRegistry[this.selected].summary)}</p><button class="text-button explore-reference-action" data-explore-reference>Explore this concept ${icon('expand')}</button>${
       context
-        ? `<p class="small">${esc(this.request?.requestType ?? 'TEXT')} · Request ${esc(context.state)} · ${esc(context.requestId)}</p>${stage ? `<h3>${esc(stage.title)}</h3>${evidenceMarkup(stage.evidence)}` : '<p>Exploratory concept selection; the official educational stage is retained separately.</p>'}<p class="small">${context.caveats.map(esc).join(' ')} Actual media is in Request &amp; result. Vision patches, fusion, latent noise and denoising geometry do not expose this provider’s internals.</p>${evidenceMarkup(unknown('Provider network route, hardware allocation and hidden model internals are not exposed.'))}<details><summary>Available evidence for this concept</summary>${context.evidence
+        ? `<p class="small">${esc(this.request?.requestType ?? 'TEXT')} · Request ${esc(context.state)} · ${esc(context.requestId)}</p>${stage ? `<h3>${esc(stage.title)}</h3>${stage.events.some((e) => e.kind === 'tool-call' || e.kind === 'source-reference') ? latestObservations(stage.events).map(eventMarkup).join('') : evidenceMarkup(stage.evidence)}` : '<p>Exploratory concept selection; the official educational stage is retained separately.</p>'}<p class="small">${context.caveats.map(esc).join(' ')} Actual media is in Request &amp; result. Vision patches, fusion, latent noise and denoising geometry do not expose this provider’s internals.</p>${evidenceMarkup(unknown('Provider network route, hardware allocation and hidden model internals are not exposed.'))}<details><summary>Available evidence for this concept</summary>${[
+            ...context.evidence.filter((e) => !['tool-call', 'source-reference'].includes(e.kind)),
+            ...latestObservations(context.evidence),
+          ]
             .filter((e) => e.kind !== 'text-update')
-            .map((e) => `<h4>${esc(e.kind)}</h4>${evidenceMarkup(e.evidence)}`)
+            .map((e) => `<h4>${esc(e.kind)}</h4>${eventMarkup(e)}`)
             .join('')}</details>`
         : '<p>No request evidence yet. The atlas is an illustrative educational representation.</p>'
     }`;

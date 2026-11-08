@@ -1,3 +1,5 @@
+import { ChatObservations } from './provider-observations.ts';
+import type { ProviderObservation } from './live-observations.ts';
 import { normalizeGeneratedImages } from './live-media.ts';
 import type { ImageInput, GeneratedImage } from './live-media.ts';
 export interface Candidate {
@@ -12,6 +14,8 @@ export interface TokenResult {
 }
 export interface ProviderResult {
   text: string;
+  textReturned?: boolean;
+  observations?: readonly ProviderObservation[];
   tokens: TokenResult[];
   usage?: Record<string, number>;
   finishReason?: string;
@@ -48,10 +52,15 @@ export function parseCompletion(data: any): ProviderResult {
   const choice = data.choices?.[0];
   if (!choice) throw new Error('The endpoint returned no completion choice.');
   if (choice.message?.refusal) throw new Error(`Provider refusal: ${choice.message.refusal}`);
-  if (typeof choice.message?.content !== 'string')
-    throw new Error('No text response. This adapter supports text completions.');
+  const observations = new ChatObservations();
+  observations.read(choice.message);
+  const textReturned = typeof choice.message?.content === 'string';
+  if (!textReturned && !observations.snapshot.some((event) => event.kind === 'tool-call'))
+    throw new Error('No text response or structured function call was returned.');
   return {
-    text: choice.message.content,
+    text: textReturned ? choice.message.content : '',
+    textReturned,
+    observations: observations.snapshot,
     tokens: parseTokens(choice.logprobs?.content),
     usage: data.usage,
     finishReason: choice.finish_reason,
@@ -78,8 +87,9 @@ export async function requestText(
   signal: AbortSignal,
   onData: (text: string, event: string) => void,
   fetcher: typeof fetch = fetch,
+  onObservation?: (event: ProviderObservation) => void,
 ): Promise<ProviderResult> {
-  return requestChat(config, messages, signal, onData, fetcher);
+  return requestChat(config, messages, signal, onData, fetcher, onObservation);
 }
 export async function requestImageUnderstanding(
   config: ProviderConfig,
@@ -88,11 +98,12 @@ export async function requestImageUnderstanding(
   signal: AbortSignal,
   onData: (text: string, event: string) => void,
   fetcher: typeof fetch = fetch,
+  onObservation?: (event: ProviderObservation) => void,
 ): Promise<ProviderResult> {
   const content: Exclude<ChatMessage['content'], string> = [];
   if (prompt) content.push({ type: 'text', text: prompt });
   content.push({ type: 'image_url', image_url: { url: image.dataUrl } });
-  return requestChat(config, [{ role: 'user', content }], signal, onData, fetcher);
+  return requestChat(config, [{ role: 'user', content }], signal, onData, fetcher, onObservation);
 }
 export interface ImageGenerationResult {
   media: GeneratedImage[];
@@ -114,10 +125,14 @@ export async function requestImageGeneration(
     },
     body: JSON.stringify({ model: config.model, prompt, n: 1 }),
   });
-  if (!response.ok)
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const detail = typeof data?.error?.message === 'string' ? data.error.message.slice(0, 2000) : '';
+    // The request service redacts credentials/payloads before recording or displaying errors.
     throw new Error(
-      `Image generation failed (HTTP ${response.status}). Check connection and declared support.`,
+      `Image generation failed (HTTP ${response.status}). ${detail || 'Check connection and declared support.'}`,
     );
+  }
   const data = await response.json();
   const media = normalizeGeneratedImages(data.data);
   const metadata: Record<string, unknown> = {};
@@ -131,6 +146,7 @@ async function requestChat(
   signal: AbortSignal,
   onData: (text: string, event: string) => void,
   fetcher: typeof fetch = fetch,
+  onObservation?: (event: ProviderObservation) => void,
 ): Promise<ProviderResult> {
   const response = await fetcher(`${validateEndpoint(config.url)}/chat/completions`, {
     method: 'POST',
@@ -154,7 +170,10 @@ async function requestChat(
   }
   if (!response.headers.get('content-type')?.includes('text/event-stream')) {
     const result = parseCompletion(await response.json());
-    onData(result.text, 'Final response received');
+    if (!onObservation && !result.textReturned)
+      throw new Error('No text response. This adapter supports text completions.');
+    for (const event of result.observations ?? []) onObservation?.(event);
+    if (result.textReturned) onData(result.text, 'Final response received');
     return result;
   }
   if (!response.body) throw new Error('The response has no readable stream.');
@@ -163,7 +182,8 @@ async function requestChat(
   let buffer = '',
     doneMarker = false,
     finished = false;
-  const result: ProviderResult = { text: '', tokens: [] };
+  const result: ProviderResult = { text: '', textReturned: false, tokens: [] };
+  const observations = new ChatObservations(onObservation);
   const consume = (frame: string) => {
     const payload = frame
       .split('\n')
@@ -181,7 +201,9 @@ async function requestChat(
     const choice = data.choices?.[0];
     if (!choice) return;
     if (choice.delta?.refusal) throw new Error(`Provider refusal: ${choice.delta.refusal}`);
+    observations.read(choice.delta, true);
     if (typeof choice.delta?.content === 'string') {
+      result.textReturned = true;
       result.text += choice.delta.content;
       onData(result.text, 'Stream event received');
     }
@@ -209,7 +231,13 @@ async function requestChat(
     }
     if (!doneMarker && !finished)
       throw new Error('Stream ended before completion. Partial text has been preserved.');
-    if (!result.text) throw new Error('The provider returned no text.');
+    if (
+      !result.text &&
+      (!onObservation || !observations.snapshot.some((event) => event.kind === 'tool-call'))
+    )
+      throw new Error('The provider returned no text or structured function call.');
+    observations.finish();
+    result.observations = observations.snapshot;
     return result;
   } finally {
     await reader.cancel().catch(() => {});

@@ -11,6 +11,8 @@ export const liveFeatures = [
   'imageText',
   'imageGeneration',
   'toolCalling',
+  'toolObservations',
+  'sourceReferences',
   'mcp',
   'rag',
   'webSearch',
@@ -20,7 +22,7 @@ export type LiveFeature = (typeof liveFeatures)[number];
 export type CapabilitySupport = 'SUPPORTED' | 'UNSUPPORTED' | 'UNKNOWN';
 export interface CapabilityAssertion {
   readonly support: CapabilitySupport;
-  readonly origin: 'ADAPTER_CONTRACT' | 'BACKEND_DECLARATION' | 'UNADVERTISED';
+  readonly origin: 'ADAPTER_CONTRACT' | 'USER_DECLARED' | 'BACKEND_REPORTED' | 'UNADVERTISED';
 }
 export interface LiveCapabilities {
   readonly adapterId: 'chat-completions-text' | 'chat-completions-image' | 'image-generation';
@@ -34,6 +36,8 @@ export function textCapabilities(
 ): LiveCapabilities {
   const supported = new Set<LiveFeature>([
     'text',
+    'toolObservations',
+    'sourceReferences',
     'streaming',
     'cancellation',
     'boundedContext',
@@ -57,7 +61,7 @@ export function textCapabilities(
         feature,
         {
           support: declarations[feature] ?? 'UNKNOWN',
-          origin: declarations[feature] ? 'BACKEND_DECLARATION' : 'UNADVERTISED',
+          origin: declarations[feature] ? 'USER_DECLARED' : 'UNADVERTISED',
         },
       ]),
     ) as Record<LiveFeature, CapabilityAssertion>,
@@ -87,7 +91,17 @@ export function mediaCapabilities(
   const base = textCapabilities(declarations);
   const features: LiveFeature[] =
     kind === 'IMAGE_UNDERSTANDING'
-      ? ['text', 'imageText', 'streaming', 'cancellation', 'usage', 'finishReason', 'logprobs']
+      ? [
+          'text',
+          'toolObservations',
+          'sourceReferences',
+          'imageText',
+          'streaming',
+          'cancellation',
+          'usage',
+          'finishReason',
+          'logprobs',
+        ]
       : ['imageGeneration', 'generatedMedia', 'cancellation', 'usage'];
   return immutableCopy({
     ...base,

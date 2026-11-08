@@ -14,7 +14,8 @@ async function prepare(page: Page) {
     const { AtlasScene } = await import(/* @vite-ignore */ path);
     const original = AtlasScene.prototype.setPresentationSuspended;
     AtlasScene.prototype.setPresentationSuspended = function (value: boolean) {
-      (window as any).__exploreDemoScene = this;
+      if (this.renderer.domElement === document.querySelector('#viewport canvas'))
+        (window as any).__exploreDemoScene = this;
       original.call(this, value);
     };
   }, path);
@@ -72,8 +73,8 @@ test('hierarchy, reference, related concepts and sources stay within Explore and
   await expect(page.locator('#explore-workspace')).toHaveAttribute('data-concept', destination!);
   await expect(page.locator('#explore-reference-title')).toBeFocused();
   await root(page, 'LIVE').click();
-  await expect(page.locator('#workspace-title')).toHaveText('Live Lab');
-  await expect(page.locator('#workspace-description')).toContainText('not implemented');
+  await expect(page.locator('#live-workspace')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#live-request-status')).toHaveText('No request yet');
   await root(page, 'EXPLORE').click();
   await expect(page.locator('#explore-workspace')).toHaveAttribute('data-concept', destination!);
   await root(page, 'DEMO').click();

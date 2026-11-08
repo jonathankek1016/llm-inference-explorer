@@ -33,7 +33,7 @@ test('adapter and backend capability claims are separate; only explicit declarat
   assert.deepEqual(checkTextCapabilities(profile, { stream: true, logprobs: true }), []);
   const declared = textCapabilities({ text: 'SUPPORTED', streaming: 'UNSUPPORTED', logprobs: 'UNKNOWN' });
   assert.deepEqual(checkTextCapabilities(declared, { stream: true, logprobs: true }), ['streaming']);
-  assert.equal(declared.backend.text.origin, 'BACKEND_DECLARATION');
+  assert.equal(declared.backend.text.origin, 'USER_DECLARED');
   assert.equal(profile.backend.text.support, 'UNKNOWN');
   assert.throws(() => {
     (profile.backend.text as any).support = 'SUPPORTED';

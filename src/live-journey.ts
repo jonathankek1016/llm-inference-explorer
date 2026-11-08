@@ -1,3 +1,4 @@
+import type { ProviderObservation } from './live-observations.ts';
 import { createJourneyControl, transitionJourney, advanceJourneyTime, journeyAdvancing } from './core.ts';
 import type { JourneyAction, TraceEvent } from './core.ts';
 import { LiveTraceBuilder } from './live-trace.ts';
@@ -14,6 +15,7 @@ export class LiveJourney {
   private builder?: LiveTraceBuilder;
   private sequence = -1;
   private responseStage?: string;
+  private observationStages = new Map<string, string>();
   private retained?: readonly LiveTraceStage[];
   get requestId() {
     return this.builder?.requestId;
@@ -83,6 +85,22 @@ export class LiveJourney {
               'This 3D model explains a concept. It is not a measurement or the actual media result of this request.',
           });
       } else if (
+        (event.kind === 'tool-call' || event.kind === 'source-reference') &&
+        event.evidence.kind !== 'UNKNOWN'
+      ) {
+        const observation = event.evidence.value as ProviderObservation;
+        const existing = this.observationStages.get(observation.key);
+        if (existing) this.builder.annotate(existing, event);
+        else {
+          const stage = this.builder.appendEvent(
+            event,
+            event.kind === 'tool-call'
+              ? 'Provider requested a function'
+              : 'Provider supplied a source reference',
+          );
+          if (stage) this.observationStages.set(observation.key, stage.id);
+        }
+      } else if (
         ['text-update', 'result-text', 'result-media', 'error'].includes(event.kind) ||
         (event.kind === 'request-state' &&
           event.evidence.kind !== 'UNKNOWN' &&
@@ -97,7 +115,9 @@ export class LiveJourney {
                 ? 'Request ended'
                 : event.kind === 'result-media'
                   ? 'Returned generated image'
-                  : 'Returned response',
+                  : event.kind === 'result-text' && event.evidence.kind === 'UNKNOWN'
+                    ? 'No returned text'
+                    : 'Returned response',
           )?.id;
         else this.builder.annotate(this.responseStage, event);
       } else if (this.responseStage) this.builder.annotate(this.responseStage, event);

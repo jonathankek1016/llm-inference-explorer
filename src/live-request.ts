@@ -1,3 +1,4 @@
+import type { ProviderObservation } from './live-observations.ts';
 import type { LiveRequestType } from './live-input.ts';
 import { validateImage, imageMetadata } from './live-media.ts';
 import type { ImageInput, GeneratedImage } from './live-media.ts';
@@ -334,6 +335,26 @@ export class LiveRequests {
         });
         this.publish(record);
       };
+      const observations = new Map<string, string>();
+      const onObservation = (event: ProviderObservation) => {
+        if (!this.accepts(record) || record.state !== 'RUNNING') return;
+        const fingerprint = JSON.stringify(event);
+        if (observations.get(event.key) === fingerprint) return;
+        observations.set(event.key, fingerprint);
+        record.log.append({
+          requestId: record.id,
+          kind: event.kind,
+          conceptId: event.kind === 'tool-call' ? 'intent' : 'response',
+          evidence: observed(
+            event,
+            'PROVIDER',
+            event.kind === 'tool-call'
+              ? 'Structured function call returned by the provider; arguments are untrusted data. Execution and results are not observed. This app has no tool executor.'
+              : 'Structured provider citation, not a verified source or proof that web search or retrieval ran',
+          ),
+        });
+        this.publish(record);
+      };
       if (record.requestType === 'IMAGE_GENERATION') {
         const output = await this.generationTransport(input.config, input.prompt, signal);
         if (!this.accepts(record)) return;
@@ -385,9 +406,18 @@ export class LiveRequests {
       }
       const result =
         record.requestType === 'IMAGE_UNDERSTANDING'
-          ? await this.imageTransport(input.config, record.inputImage!, input.prompt, signal, onText)
-          : await this.transport(input.config, messages, signal, onText);
+          ? await this.imageTransport(
+              input.config,
+              record.inputImage!,
+              input.prompt,
+              signal,
+              onText,
+              undefined,
+              onObservation,
+            )
+          : await this.transport(input.config, messages, signal, onText, undefined, onObservation);
       if (!this.accepts(record)) return;
+      for (const event of result.observations ?? []) onObservation(event);
       this.move(record, 'COMPLETING');
       record.result = resultEvidence(result);
       const fields = [
@@ -423,7 +453,10 @@ export class LiveRequests {
 
 function resultEvidence(result: ProviderResult): LiveTextResult {
   return immutableCopy({
-    text: observed(result.text, 'PROVIDER', 'Returned text parsed by the existing adapter'),
+    text:
+      result.textReturned === false
+        ? unknown('No text content was returned; structured calls do not imply a text answer or tool result')
+        : observed(result.text, 'PROVIDER', 'Returned text parsed by the existing adapter'),
     usage: result.usage
       ? observed(result.usage, 'PROVIDER', 'Explicit returned usage fields')
       : unknown('Usage was not returned'),
