@@ -1,3 +1,4 @@
+import type { LiveConfiguration, LiveMediaConfiguration } from './live-input.ts';
 import './style.css';
 import { shell } from './shell.ts';
 import { icon } from './icons.ts';
@@ -168,8 +169,10 @@ try {
 } catch {
   /* Storage may be disabled. */
 }
-const prefs = read<Partial<ProviderConfig>>('atlas-provider', {});
-let config: ProviderConfig = {
+const mediaFeatures = ['imageText', 'streaming', 'logprobs', 'imageGeneration', 'generatedMedia'] as const;
+const prefs = read<Partial<LiveConfiguration>>('atlas-provider', {});
+let config: LiveConfiguration = {
+  media: prefs.media,
   url: typeof prefs.url === 'string' ? prefs.url : 'https://api.openai.com/v1',
   model: typeof prefs.model === 'string' ? prefs.model : '',
   stream: prefs.stream !== false,
@@ -1025,6 +1028,9 @@ function openSettings() {
   $<HTMLInputElement>('provider-key').value = config.key;
   $<HTMLInputElement>('provider-stream').checked = config.stream;
   $<HTMLInputElement>('provider-logprobs').checked = config.logprobs;
+  $<HTMLInputElement>('provider-generation-model').value = config.media?.generationModel ?? '';
+  for (const feature of mediaFeatures)
+    $<HTMLSelectElement>(`provider-media-${feature}`).value = config.media?.[feature] ?? 'UNKNOWN';
   $('settings-error').textContent = '';
   $<HTMLDialogElement>('settings-dialog').showModal();
   updateJourney({ type: 'SET_SUSPENSION', reason: 'SETTINGS', suspended: true });
@@ -1317,6 +1323,11 @@ $('chat-form').addEventListener('submit', (e) => {
   e.preventDefault();
   void send();
 });
+// Changing connection identity invalidates old declarations before saving.
+for (const id of ['provider-url', 'provider-model', 'provider-generation-model'])
+  $(id).addEventListener('input', () => {
+    for (const feature of mediaFeatures) $<HTMLSelectElement>(`provider-media-${feature}`).value = 'UNKNOWN';
+  });
 $('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();
   try {
@@ -1328,6 +1339,12 @@ $('settings-form').addEventListener('submit', (e) => {
       logprobs: $<HTMLInputElement>('provider-logprobs').checked,
     };
     if (!config.model) throw new Error('Enter a model identifier.');
+    config.media = {
+      url: config.url,
+      model: config.model,
+      generationModel: $<HTMLInputElement>('provider-generation-model').value.trim(),
+      ...Object.fromEntries(mediaFeatures.map((f) => [f, $<HTMLSelectElement>(`provider-media-${f}`).value])),
+    } as LiveMediaConfiguration;
     const { key: _key, ...safe } = config;
     save('atlas-provider', safe);
     live.refreshConfiguration();

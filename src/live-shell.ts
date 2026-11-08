@@ -1,18 +1,18 @@
 import { icon } from './icons.ts';
 
 export const liveShell = `
-<header class="scene-intro"><span class="eyebrow">LIVE LAB · TEXT</span><h1 id="live-title">A real request, an honest view</h1><p>Observed evidence. Illustrative models. Your own pace.</p></header>
+<header class="scene-intro"><span class="eyebrow">LIVE LAB</span><h1 id="live-title">A real request, an honest view</h1><p>Observed evidence. Illustrative models. Your own pace.</p></header>
 <div id="live-framing" aria-hidden="true"></div><div id="live-viewport" class="viewport"></div>
 <p id="live-fallback" class="live-fallback" hidden>3D is unavailable. Request, evidence and journey controls remain available.</p>
 <div class="live-panel-toggles"><button data-live-panel="runtime" aria-controls="live-runtime">Request & result</button><button data-live-panel="inspector" aria-controls="live-inspector">Inspector</button></div>
 <aside id="live-runtime" class="panel live-runtime" aria-label="Live request and result">
- <div class="panel-heading"><span class="eyebrow">REAL TEXT REQUEST</span><button data-live-close="runtime" class="small-icon" aria-label="Close Live request panel">${icon('minus')}</button></div>
+ <div class="panel-heading"><span class="eyebrow">REAL REQUEST</span><button data-live-close="runtime" class="small-icon" aria-label="Close Live request panel">${icon('minus')}</button></div>
  <div class="live-panel-body"><button id="live-settings" class="text-button">Model connection ${icon('settings')}</button><p id="live-connection" class="small"></p>
- <details><summary>Text capabilities</summary><p id="live-capabilities" class="small"></p></details>
- <form id="live-form"><label for="live-prompt">Your text</label><textarea id="live-prompt" rows="3" maxlength="6000" required placeholder="Ask a question…"></textarea><div class="compose-actions"><button id="live-cancel" type="button" hidden>Cancel request</button><button id="live-submit" class="primary" type="submit">Send text ${icon('send')}</button></div></form>
+ <details><summary>Request capabilities</summary><p id="live-capabilities" class="small"></p></details>
+ <form id="live-form"><label for="live-request-type">Request type</label><select id="live-request-type"><option value="TEXT">Text</option><option value="IMAGE_UNDERSTANDING" disabled>Image understanding</option><option value="IMAGE_GENERATION" disabled>Image generation</option></select><p id="live-media-support" class="small"></p><div id="live-image-input" hidden><label for="live-image-file">Input image · PNG / JPEG / WebP</label><input id="live-image-file" type="file" accept="image/png,image/jpeg,image/webp"><p class="small">App limits: 10 MiB, 40 megapixels. Sent only on Submit to your configured backend.</p><figure id="live-image-preview" hidden><img alt="Selected input image"><figcaption></figcaption><button id="live-remove-image" type="button" class="text-button">Remove image</button></figure></div><p id="live-input-error" class="error" role="alert" hidden></p><label id="live-prompt-label" for="live-prompt">Your text</label><textarea id="live-prompt" rows="3" maxlength="6000" required placeholder="Ask a question…"></textarea><div class="compose-actions"><button id="live-cancel" type="button" hidden>Cancel request</button><button id="live-submit" class="primary" type="submit">Send text ${icon('send')}</button></div></form>
  <p id="live-submit-note" class="small"></p><p id="live-request-status" role="status">No request yet</p><p id="live-error" class="error" role="alert" hidden></p>
  <h2 class="live-section-title">Response <span class="eyebrow">OBSERVED WHEN RETURNED</span></h2><div id="live-response" class="live-response" tabindex="0">Your response will appear here, independently of teaching playback.</div>
- <details id="live-receipts"><summary>Request evidence & timing</summary><div id="live-receipt-body"></div></details>
+ <section id="live-media-output" aria-label="Generated image output" hidden><h2 class="live-section-title">Generated output · Observed</h2><p class="small">Actual returned images, separate from the illustrative 3D model. Provider-hosted URLs may expire.</p><div id="live-generated-images"></div></section><details id="live-receipts"><summary>Request evidence & timing</summary><div id="live-receipt-body"></div></details>
  <h2 class="live-section-title">Educational journey</h2><nav id="live-stages" aria-label="Live educational stages"></nav>
  </div>
 </aside>

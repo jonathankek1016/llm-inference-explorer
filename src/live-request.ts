@@ -1,8 +1,21 @@
+import type { LiveRequestType } from './live-input.ts';
+import { validateImage, imageMetadata } from './live-media.ts';
+import type { ImageInput, GeneratedImage } from './live-media.ts';
 import { RunGate, boundedContext } from './core.ts';
 import type { Message } from './core.ts';
-import { requestText, validateEndpoint } from './provider.ts';
+import {
+  requestText,
+  requestImageUnderstanding,
+  requestImageGeneration,
+  validateEndpoint,
+} from './provider.ts';
 import type { ProviderConfig, ProviderResult } from './provider.ts';
-import { textCapabilities, checkTextCapabilities } from './live-capabilities.ts';
+import {
+  textCapabilities,
+  checkTextCapabilities,
+  mediaCapabilities,
+  checkMediaCapabilities,
+} from './live-capabilities.ts';
 import type { CapabilitySupport, LiveCapabilities, LiveFeature } from './live-capabilities.ts';
 import { LiveEventLog } from './live-events.ts';
 import type { LiveEvent, LiveRequestId, LiveRequestOwner } from './live-events.ts';
@@ -44,18 +57,34 @@ export interface LiveRequestSnapshot {
   readonly id: LiveRequestId;
   readonly owner: LiveRequestOwner;
   readonly state: LiveRequestState;
+  readonly requestType?: LiveRequestType;
+  readonly media?: readonly GeneratedImage[];
+  readonly inputImage?: ImageInput;
   readonly capabilities: LiveCapabilities;
   readonly events: readonly LiveEvent[];
   readonly result?: LiveTextResult;
   readonly error?: Evidence<string>;
 }
-export interface LiveTextInput {
+interface LiveInputBase {
   readonly prompt: string;
   readonly history?: readonly Message[];
   readonly config: ProviderConfig;
   /** Explicit declarations only; neither endpoint branding nor prompt keywords supply these. */
   readonly backendCapabilities?: Partial<Record<LiveFeature, CapabilitySupport>>;
 }
+export interface LiveTextInput extends LiveInputBase {
+  readonly requestType?: 'TEXT';
+  readonly image?: never;
+}
+export interface LiveImageInput extends LiveInputBase {
+  readonly requestType: 'IMAGE_UNDERSTANDING';
+  readonly image: ImageInput;
+}
+export interface LiveGenerationInput extends LiveInputBase {
+  readonly requestType: 'IMAGE_GENERATION';
+  readonly image?: never;
+}
+export type LiveInput = LiveTextInput | LiveImageInput | LiveGenerationInput;
 export type RequestAdmission =
   | { accepted: true; requestId: LiveRequestId; completion: Promise<LiveRequestSnapshot> }
   | { accepted: false; reason: 'REQUEST_BUSY'; currentRequestId: LiveRequestId }
@@ -64,6 +93,9 @@ interface RequestRecord {
   id: LiveRequestId;
   owner: LiveRequestOwner;
   state: LiveRequestState;
+  requestType: LiveRequestType;
+  media?: readonly GeneratedImage[];
+  inputImage?: ImageInput;
   generation: number;
   capabilities: LiveCapabilities;
   log: LiveEventLog;
@@ -91,12 +123,22 @@ export class LiveRequests {
   private readonly records = new Map<LiveRequestId, RequestRecord>();
   private latest?: LiveRequestId;
   private readonly transport: typeof requestText;
+  private readonly imageTransport: typeof requestImageUnderstanding;
+  private readonly generationTransport: typeof requestImageGeneration;
   private readonly now: () => number;
   private readonly elapsedClock: () => number;
   constructor(
-    options: { transport?: typeof requestText; now?: () => number; elapsedClock?: () => number } = {},
+    options: {
+      imageTransport?: typeof requestImageUnderstanding;
+      generationTransport?: typeof requestImageGeneration;
+      transport?: typeof requestText;
+      now?: () => number;
+      elapsedClock?: () => number;
+    } = {},
   ) {
     this.transport = options.transport ?? requestText;
+    this.imageTransport = options.imageTransport ?? requestImageUnderstanding;
+    this.generationTransport = options.generationTransport ?? requestImageGeneration;
     this.now = options.now ?? Date.now;
     this.elapsedClock = options.elapsedClock ?? (() => performance.now());
   }
@@ -111,6 +153,9 @@ export class LiveRequests {
         id,
         owner: record.owner,
         state: record.state,
+        requestType: record.requestType,
+        media: record.media,
+        inputImage: record.inputImage,
         capabilities: record.capabilities,
         events: record.log.events,
         result: record.result,
@@ -118,11 +163,16 @@ export class LiveRequests {
       })
     );
   }
-  start(owner: LiveRequestOwner, input: LiveTextInput): RequestAdmission {
+  start(owner: LiveRequestOwner, input: LiveInput): RequestAdmission {
     if (owner.workspace !== 'LIVE' || !owner.instanceId) return { accepted: false, reason: 'INVALID_OWNER' };
     const current = this.latest && this.records.get(this.latest);
     if (current && !requestTerminal(current.state))
       return { accepted: false, reason: 'REQUEST_BUSY', currentRequestId: current.id };
+    // Keep no media archive when an explicit new request replaces the latest result.
+    for (const prior of this.records.values()) {
+      prior.media = undefined;
+      prior.inputImage = undefined;
+    }
     const id = `request:${crypto.randomUUID()}` as LiveRequestId;
     const run = this.gate.start(); // stale-callback token only, not request identity
     let settle!: RequestRecord['settle'];
@@ -133,8 +183,12 @@ export class LiveRequests {
       id,
       owner: immutableCopy(owner),
       state: 'IDLE',
+      requestType: input.requestType ?? 'TEXT',
       generation: run.id,
-      capabilities: textCapabilities(input.backendCapabilities),
+      capabilities:
+        !input.requestType || input.requestType === 'TEXT'
+          ? textCapabilities(input.backendCapabilities)
+          : mediaCapabilities(input.requestType, input.backendCapabilities),
       log: new LiveEventLog(id, owner, this.now),
       started: this.elapsedClock(),
       settle,
@@ -190,34 +244,66 @@ export class LiveRequests {
     if (state !== 'CANCELLED')
       this.gate.finish(record.generation, state === 'COMPLETED' ? 'completed' : 'error');
     record.settle(this.get(record.id)!);
+    record.settle = () => {}; // Do not retain the fulfilled promise and its media snapshot.
   }
-  private async execute(record: RequestRecord, input: LiveTextInput, signal: AbortSignal) {
+  private async execute(record: RequestRecord, input: LiveInput, signal: AbortSignal) {
     try {
-      if (!input.prompt.trim() || input.prompt.length > 6000)
+      if (
+        (record.requestType !== 'IMAGE_UNDERSTANDING' && !input.prompt.trim()) ||
+        input.prompt.length > 6000
+      )
         throw new Error('Enter a prompt between 1 and 6,000 characters.');
-      if (!input.config.model.trim()) throw new Error('Configure a text model before requesting.');
+      if (!input.config.model.trim()) throw new Error('Configure a model before requesting.');
       const endpoint = validateEndpoint(input.config.url);
-      const unsupported = checkTextCapabilities(record.capabilities, input.config);
+      const unsupported =
+        record.requestType === 'TEXT'
+          ? checkTextCapabilities(record.capabilities, input.config)
+          : checkMediaCapabilities(record.capabilities, record.requestType, input.config);
+      if (record.requestType === 'IMAGE_UNDERSTANDING') {
+        if (!input.image) throw new Error('Choose an image before submitting.');
+        validateImage(input.image);
+        record.inputImage = Object.freeze({ ...input.image });
+      }
       if (unsupported.length)
         throw new Error(`Unsupported requested capabilities: ${unsupported.join(', ')}`);
       record.log.append({
         requestId: record.id,
         kind: 'input',
-        conceptId: 'device',
+        conceptId: record.requestType === 'IMAGE_UNDERSTANDING' ? 'image' : 'device',
         evidence: observed(
-          input.prompt,
+          record.inputImage ? { instruction: input.prompt, imageId: record.inputImage.id } : input.prompt,
           'APPLICATION',
-          'Submitted text; no hidden capability classification from words',
+          record.inputImage
+            ? 'User-submitted image and optional instruction; payload retained separately in memory'
+            : 'Submitted text; no hidden capability classification from words',
         ),
       });
+      if (record.inputImage)
+        record.log.append({
+          requestId: record.id,
+          kind: 'image-metadata',
+          conceptId: 'image',
+          evidence: calculated(
+            imageMetadata(record.inputImage),
+            'Browser-decoded dimensions, file MIME and byte size; not provider telemetry',
+          ),
+        });
       const messages = boundedContext([...(input.history ?? [])], input.prompt);
       record.log.append({
         requestId: record.id,
         kind: 'preparation',
-        conceptId: 'context',
+        conceptId: record.requestType === 'IMAGE_UNDERSTANDING' ? 'image' : 'context',
         evidence: calculated(
-          { modality: 'text', messages },
-          'Text input contract and existing bounded-context assembly; not provider token counts',
+          record.requestType === 'TEXT'
+            ? { modality: 'text', messages }
+            : {
+                requestType: record.requestType,
+                prompt: input.prompt,
+                ...(record.inputImage ? { image: imageMetadata(record.inputImage) } : {}),
+              },
+          record.requestType === 'TEXT'
+            ? 'Text input contract and existing bounded-context assembly; not provider token counts'
+            : 'App-side payload assembly; image bytes are not included in event logs',
         ),
       });
       if (!this.accepts(record)) return;
@@ -228,6 +314,7 @@ export class LiveRequests {
         evidence: observed(
           {
             endpoint,
+            requestType: record.requestType,
             model: input.config.model,
             streamRequested: input.config.stream,
             logprobsRequested: input.config.logprobs,
@@ -237,20 +324,69 @@ export class LiveRequests {
         ),
       });
       this.publish(record);
-      const result = await this.transport(input.config, messages, signal, (text) => {
+      const onText = (text: string) => {
         if (!this.accepts(record) || record.state !== 'RUNNING') return;
         record.log.append({
           requestId: record.id,
           kind: 'text-update',
           conceptId: 'response',
-          evidence: observed(
-            text,
-            'PROVIDER',
-            'Cumulative text exposed by the existing transport; not a raw network packet or token boundary',
-          ),
+          evidence: observed(text, 'PROVIDER', 'Cumulative returned text; not hidden model activations'),
         });
         this.publish(record);
-      });
+      };
+      if (record.requestType === 'IMAGE_GENERATION') {
+        const output = await this.generationTransport(input.config, input.prompt, signal);
+        if (!this.accepts(record)) return;
+        this.move(record, 'COMPLETING');
+        record.media = immutableCopy(output.media);
+        record.result = {
+          ...resultEvidence({ text: '', tokens: [], usage: output.usage }),
+          text: unknown('Image-generation endpoint returned media, not text'),
+        };
+        record.log.append({
+          requestId: record.id,
+          kind: 'result-media',
+          conceptId: 'image-output',
+          evidence: observed(
+            output.media.map(({ id, revisedPrompt }) => ({ mediaId: id, revisedPrompt })),
+            'PROVIDER',
+            'App-assigned references to media actually returned by the provider, available in Request & result. The 3D model is illustrative.',
+          ),
+        });
+        record.log.append({
+          requestId: record.id,
+          kind: 'media-metadata',
+          conceptId: 'image-output',
+          evidence: calculated(
+            output.media.map(({ id, mime }) => ({ mediaId: id, mime })),
+            'App media identity and MIME recognized from raster signatures where available; URL media type is unknown until browser decoding',
+          ),
+        });
+        record.log.append({
+          requestId: record.id,
+          kind: 'generation-metadata',
+          conceptId: 'image-output',
+          evidence: Object.keys(output.metadata).length
+            ? observed(
+                output.metadata,
+                'PROVIDER',
+                'Only explicitly returned generation fields; hidden sampler and denoising progress are unknown',
+              )
+            : unknown('No generation metadata was returned'),
+        });
+        record.log.append({
+          requestId: record.id,
+          kind: 'usage',
+          conceptId: 'image-output',
+          evidence: record.result.usage,
+        });
+        this.finish(record, 'COMPLETED');
+        return;
+      }
+      const result =
+        record.requestType === 'IMAGE_UNDERSTANDING'
+          ? await this.imageTransport(input.config, record.inputImage!, input.prompt, signal, onText)
+          : await this.transport(input.config, messages, signal, onText);
       if (!this.accepts(record)) return;
       this.move(record, 'COMPLETING');
       record.result = resultEvidence(result);
@@ -267,10 +403,13 @@ export class LiveRequests {
     } catch (error) {
       if (!this.accepts(record)) return;
       const message = error instanceof Error ? error.message : 'Request failed';
-      const safe = (input.config.key ? message.split(input.config.key).join('[redacted]') : message).slice(
-        0,
-        2000,
-      );
+      const cleaned = message.replace(/data:image\/[^\s"']+/g, '[image payload omitted]');
+      const privateSafe = input.image?.dataUrl.includes(',')
+        ? cleaned.split(input.image.dataUrl.split(',')[1]).join('[image payload omitted]')
+        : cleaned;
+      const safe = (
+        input.config.key ? privateSafe.split(input.config.key).join('[redacted]') : privateSafe
+      ).slice(0, 2000);
       record.error = observed(
         safe,
         'APPLICATION',

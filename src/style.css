@@ -3738,3 +3738,41 @@ select option {
     bottom: 0.3rem;
   }
 }
+
+/* Live media belongs to the request panel, never the teaching canvas/callouts. */
+#live-form select,
+#live-image-file {
+  width: 100%;
+  max-width: 100%;
+}
+#live-image-preview,
+#live-generated-images figure {
+  margin: 12px 0;
+}
+#live-image-preview img,
+#live-generated-images img {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 0.6rem;
+  background: var(--panel-solid);
+}
+#live-image-preview img {
+  max-height: 160px;
+}
+#live-generated-images img {
+  max-height: 340px;
+}
+#live-image-preview figcaption,
+#live-generated-images figcaption {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  margin: 8px 0;
+}
+.media-configuration {
+  margin: 16px 0;
+}
+.media-configuration select {
+  width: 100%;
+}

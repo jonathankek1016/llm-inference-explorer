@@ -1,8 +1,17 @@
+import { readImage } from './live-media.ts';
+import type { ImageInput } from './live-media.ts';
+import { mediaDeclarations } from './live-input.ts';
+import type { LiveConfiguration, LiveRequestType } from './live-input.ts';
 import { liveShell } from './live-shell.ts';
 import { LiveJourney } from './live-journey.ts';
 import { LiveRequests, requestTerminal } from './live-request.ts';
 import type { LiveRequestSnapshot } from './live-request.ts';
-import { textCapabilities, checkTextCapabilities } from './live-capabilities.ts';
+import {
+  textCapabilities,
+  checkTextCapabilities,
+  mediaCapabilities,
+  checkMediaCapabilities,
+} from './live-capabilities.ts';
 import { liveContext } from './content-overlays.ts';
 import type { Evidence } from './provenance.ts';
 import { unknown } from './provenance.ts';
@@ -29,7 +38,6 @@ import { ReadingHold, observeReading } from './reading-hold.ts';
 import { observeSceneFrames } from './scene-loop.ts';
 import type { AtlasScene } from './scene.ts';
 import { validateEndpoint } from './provider.ts';
-import type { ProviderConfig } from './provider.ts';
 import { icon } from './icons.ts';
 
 const esc = (value: unknown) =>
@@ -58,7 +66,7 @@ interface LivePorts {
   admit(owner: SessionOwner, fresh?: boolean): boolean;
   changed(): void;
   navigate(intent: NavigationIntent): void;
-  config(): ProviderConfig;
+  config(): LiveConfiguration;
   settings(): void;
   navigation(): NavigationPreferences;
 }
@@ -68,13 +76,18 @@ export class LiveWorkspace {
   readonly owner: SessionOwner = {
     workspace: 'LIVE',
     instanceId: 'live:text' as WorkspaceInstanceId,
-    label: 'Live Lab · Text',
+    label: 'Live Lab',
   };
   readonly requests = new LiveRequests();
   lesson = new LiveJourney();
   scene?: AtlasScene;
   private request?: LiveRequestSnapshot;
   private selected = 'device';
+  private requestType: LiveRequestType = 'TEXT';
+  private image?: ImageInput;
+  private imageRead = 0;
+  private mediaKey = '';
+  private inputError = '';
   private sceneId: SceneId = 'world';
   private pins: ExplorationCallout[] = [];
   private visible = false;
@@ -120,6 +133,12 @@ export class LiveWorkspace {
       event.preventDefault();
       this.submit();
     });
+    this.$('request-type').addEventListener('change', () => {
+      this.requestType = this.$<HTMLSelectElement>('request-type').value as LiveRequestType;
+      this.inputError = '';
+      this.render();
+    });
+    this.$('image-file').addEventListener('change', () => void this.selectImage());
     host.addEventListener('click', (event) => this.click(event));
     this.$('mode').addEventListener('change', () =>
       this.action({ type: 'SET_MODE', mode: this.$<HTMLSelectElement>('mode').value as JourneyMode }),
@@ -186,10 +205,22 @@ export class LiveWorkspace {
     // A retained lesson is never silently replaced by a new request's trace.
     if (this.lesson.control.active || (this.request && !requestTerminal(this.request.state))) return;
     const prompt = this.$<HTMLTextAreaElement>('prompt').value.trim();
-    if (!prompt || !this.configured()) return;
+    if (
+      (this.requestType !== 'IMAGE_UNDERSTANDING' && !prompt) ||
+      !this.configured() ||
+      (this.requestType === 'IMAGE_UNDERSTANDING' && !this.image)
+    )
+      return;
     const accepted = this.requests.start(
       { workspace: 'LIVE', instanceId: this.owner.instanceId },
-      { prompt, config: this.ports.config() },
+      {
+        prompt,
+        config: this.requestConfig(),
+        ...(this.requestType === 'IMAGE_UNDERSTANDING'
+          ? { requestType: 'IMAGE_UNDERSTANDING', image: this.image! }
+          : { requestType: this.requestType }),
+        backendCapabilities: this.requestType === 'TEXT' ? undefined : mediaDeclarations(this.ports.config()),
+      },
     );
     if (!accepted.accepted) return;
     const previous = this.lesson.control;
@@ -311,6 +342,13 @@ export class LiveWorkspace {
     if (button.hasAttribute('data-explore-reference'))
       this.ports.navigate({ kind: 'explore-concept', conceptId: this.selected });
     switch (button.id) {
+      case 'live-remove-image':
+        ++this.imageRead;
+        this.image = undefined;
+        this.inputError = '';
+        this.$<HTMLInputElement>('image-file').value = '';
+        this.render();
+        break;
       case 'live-settings':
         this.ports.settings();
         break;
@@ -363,14 +401,47 @@ export class LiveWorkspace {
         break;
     }
   }
-  private configured() {
-    const config = this.ports.config();
+  private async selectImage() {
+    const token = ++this.imageRead;
+    const file = this.$<HTMLInputElement>('image-file').files?.[0];
+    if (!file) return;
+    this.image = undefined;
+    this.inputError = '';
+    this.render();
+    try {
+      const image = await readImage(file);
+      if (token === this.imageRead) this.image = image;
+    } catch (error) {
+      if (token === this.imageRead)
+        this.inputError = error instanceof Error ? error.message : 'Image could not be read.';
+    }
+    if (token === this.imageRead) this.render();
+  }
+  private requestConfig(kind = this.requestType) {
+    const config = this.ports.config(),
+      declarations = mediaDeclarations(config);
+    if (kind === 'IMAGE_GENERATION')
+      return { ...config, model: config.media?.generationModel ?? '', stream: false, logprobs: false };
+    if (kind === 'IMAGE_UNDERSTANDING')
+      return {
+        ...config,
+        stream: config.stream && declarations.streaming === 'SUPPORTED',
+        logprobs: config.logprobs && declarations.logprobs === 'SUPPORTED',
+      };
+    return config;
+  }
+  private configured(kind = this.requestType) {
+    const config = this.requestConfig(kind);
     try {
       validateEndpoint(config.url);
     } catch {
       return false;
     }
-    return !!config.model.trim() && !checkTextCapabilities(textCapabilities(), config).length;
+    if (!config.model.trim()) return false;
+    return kind === 'TEXT'
+      ? !checkTextCapabilities(textCapabilities(), config).length
+      : !checkMediaCapabilities(mediaCapabilities(kind, mediaDeclarations(this.ports.config())), kind, config)
+          .length;
   }
   refreshConfiguration() {
     this.render();
@@ -382,18 +453,52 @@ export class LiveWorkspace {
     const busy = !!this.request && !requestTerminal(this.request.state);
     this.host.dataset.requestState = this.request?.state ?? 'IDLE';
     this.host.dataset.requestId = this.request?.id ?? '';
-    const config = this.ports.config();
+    const config = this.requestConfig();
+    const declarations = mediaDeclarations(this.ports.config());
     this.$('connection').textContent = this.configured()
-      ? `Chat Completions text adapter · ${config.model}`
-      : 'Configure a Chat Completions endpoint and text model in Settings.';
+      ? `${this.requestType === 'IMAGE_GENERATION' ? 'Image generation' : 'Chat Completions'} adapter · ${config.model}`
+      : 'Configure the endpoint, model and documented image support in Settings.';
+    const type = this.$<HTMLSelectElement>('request-type');
+    type.disabled = busy || j.active;
+    for (const option of type.options)
+      option.disabled = option.value !== 'TEXT' && !this.configured(option.value as LiveRequestType);
+    this.$('media-support').textContent =
+      `Image input: ${declarations.imageText ?? 'UNKNOWN'}. Image generation: ${declarations.imageGeneration ?? 'UNKNOWN'}. Media return: ${declarations.generatedMedia ?? 'UNKNOWN'}. Set documented support in Model connection.`;
     this.$('capabilities').textContent =
-      `Text transport and client cancellation supported. Backend capabilities are not advertised; sending makes an explicit text request, not a guarantee of backend support. Streaming ${config.stream ? 'requested' : 'off'}; logprobs ${config.logprobs ? 'requested if supported' : 'off'}. Usage and finish reason appear only if returned. No automatic retries.`;
-    this.$<HTMLButtonElement>('submit').disabled = !this.configured() || busy || j.active;
+      this.requestType === 'TEXT'
+        ? `Text transport and client cancellation supported. Backend capabilities are not advertised; sending is an explicit text request. Streaming ${config.stream ? 'requested' : 'off'}; logprobs ${config.logprobs ? 'requested if supported' : 'off'}. Usage and finish reason appear only if returned. No automatic retries.`
+        : `Image support is explicitly declared for this connection, not inferred from its name. ${this.requestType === 'IMAGE_GENERATION' ? 'One image via /images/generations. No simulated progress or streaming.' : `Image + text via /chat/completions. Streaming ${config.stream ? 'requested (declared supported)' : 'off'}; logprobs ${config.logprobs ? 'requested (declared supported)' : 'off'}.`} Client cancellation aborts transport; remote computation may continue. Usage and metadata are shown only when returned.`;
+    const understanding = this.requestType === 'IMAGE_UNDERSTANDING';
+    this.$('image-input').hidden = !understanding;
+    this.$<HTMLInputElement>('image-file').disabled = !this.configured() || busy || j.active;
+    this.$<HTMLButtonElement>('remove-image').disabled = busy || j.active;
+    this.$('image-preview').hidden = !this.image;
+    const preview = this.$('image-preview').querySelector('img')!;
+    if (this.image) {
+      if (preview.getAttribute('src') !== this.image.dataUrl) preview.src = this.image.dataUrl;
+      this.$('image-preview').querySelector('figcaption')!.textContent =
+        `Input image · ${this.image.width} × ${this.image.height} · ${Math.ceil(this.image.bytes / 1024)} KiB · ${this.image.mime}`;
+    } else preview.removeAttribute('src');
+    this.$('input-error').hidden = !this.inputError;
+    this.$('input-error').textContent = this.inputError;
+    this.$<HTMLTextAreaElement>('prompt').required = !understanding;
+    this.$('prompt-label').textContent = understanding
+      ? 'Instruction (optional)'
+      : this.requestType === 'IMAGE_GENERATION'
+        ? 'Image prompt'
+        : 'Your text';
+    this.$('submit').textContent = understanding
+      ? 'Submit image'
+      : this.requestType === 'IMAGE_GENERATION'
+        ? 'Generate image'
+        : 'Send text';
+    this.$<HTMLButtonElement>('submit').disabled =
+      !this.configured() || busy || j.active || (understanding && !this.image);
     this.$('submit-note').textContent = busy
       ? 'The request runs independently of the lesson. Cancel request to abort client transport.'
       : j.active
         ? 'Keep this lesson, or use Stop journey / Explore freely before submitting another request.'
-        : 'Text only. Requests and results stay in this tab’s memory. Sending may begin a guided lesson if the global slot is free.';
+        : 'Inputs and results stay in this tab’s memory. Sending may begin a guided lesson if the global slot is free. A new request replaces the previous media result.';
     this.$('cancel').hidden = !busy;
     this.$('request-status').textContent = this.request
       ? `Request ${this.request.state.toLowerCase()} · independent of teaching playback`
@@ -407,16 +512,31 @@ export class LiveWorkspace {
       text && text.kind !== 'UNKNOWN'
         ? String(text.value)
         : busy
-          ? 'Waiting for returned text…'
+          ? this.request?.requestType === 'IMAGE_GENERATION'
+            ? 'Waiting for generated output…'
+            : 'Waiting for returned text…'
           : this.request
-            ? 'No returned text.'
+            ? this.request.media?.length
+              ? 'Generated media is available below.'
+              : 'No returned text.'
             : 'Your response will appear here, independently of teaching playback.';
+    this.renderMedia();
     this.$('receipt-body').innerHTML = this.request
       ? `<p class="small">${esc(this.request.id)}</p><p class="small">${this.request.events
           .filter((e) => e.kind === 'request-state')
           .map((e) => (e.evidence.kind !== 'UNKNOWN' ? esc(e.evidence.value) : ''))
           .join(' → ')}</p>${this.request.events
-          .filter((e) => ['client-timing', 'usage', 'finish-reason', 'logprobs'].includes(e.kind))
+          .filter((e) =>
+            [
+              'image-metadata',
+              'generation-metadata',
+              'media-metadata',
+              'client-timing',
+              'usage',
+              'finish-reason',
+              'logprobs',
+            ].includes(e.kind),
+          )
           .map((e) => `<details><summary>${esc(e.kind)}</summary>${evidenceMarkup(e.evidence)}</details>`)
           .join('')}`
       : '<p>No runtime evidence yet.</p>';
@@ -492,6 +612,40 @@ export class LiveWorkspace {
     }
     this.ports.changed();
   }
+  private renderMedia() {
+    const key = `${this.request?.id}:${this.request?.media?.map((m) => m.id).join(',')}`;
+    this.$('media-output').hidden = !this.request?.media?.length;
+    if (key === this.mediaKey) return;
+    this.mediaKey = key;
+    const output = this.$('generated-images');
+    output.replaceChildren();
+    for (const [i, media] of (this.request?.media ?? []).entries()) {
+      const figure = document.createElement('figure'),
+        image = document.createElement('img'),
+        caption = document.createElement('figcaption');
+      image.alt = `Generated output ${i + 1}`;
+      image.referrerPolicy = 'no-referrer';
+      image.src = media.src;
+      caption.textContent = media.revisedPrompt
+        ? `Returned revised prompt: ${media.revisedPrompt}`
+        : 'Observed provider output · not the illustrative 3D model';
+      image.addEventListener('error', () => {
+        caption.textContent =
+          'The returned image could not be loaded. Its URL may have expired or its format is invalid.';
+      });
+      const link = document.createElement('a');
+      link.textContent = 'Open full image';
+      link.href = media.src;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      if (media.src.startsWith('data:')) {
+        link.download = `generated-${i + 1}.${media.mime?.split('/')[1] ?? 'png'}`;
+        link.textContent = 'Save full image';
+      }
+      figure.append(image, caption, link);
+      output.append(figure);
+    }
+  }
   private renderInspector() {
     const context = this.request && liveContext(this.request, this.selected);
     const current = this.lesson.current;
@@ -505,7 +659,7 @@ export class LiveWorkspace {
     const stage = current?.conceptId === this.selected ? current : undefined;
     body.innerHTML = `<h2>${esc(concepts[this.selected].title)}</h2><p>${esc(conceptRegistry[this.selected].summary)}</p><button class="text-button explore-reference-action" data-explore-reference>Explore this concept ${icon('expand')}</button>${
       context
-        ? `<p class="small">Request ${esc(context.state)} · ${esc(context.requestId)}</p>${stage ? `<h3>${esc(stage.title)}</h3>${evidenceMarkup(stage.evidence)}` : '<p>Exploratory concept selection; the official educational stage is retained separately.</p>'}<p class="small">${context.caveats.map(esc).join(' ')}</p>${evidenceMarkup(unknown('Provider network route, hardware allocation and hidden model internals are not exposed.'))}<details><summary>Available evidence for this concept</summary>${context.evidence
+        ? `<p class="small">${esc(this.request?.requestType ?? 'TEXT')} · Request ${esc(context.state)} · ${esc(context.requestId)}</p>${stage ? `<h3>${esc(stage.title)}</h3>${evidenceMarkup(stage.evidence)}` : '<p>Exploratory concept selection; the official educational stage is retained separately.</p>'}<p class="small">${context.caveats.map(esc).join(' ')} Actual media is in Request &amp; result. Vision patches, fusion, latent noise and denoising geometry do not expose this provider’s internals.</p>${evidenceMarkup(unknown('Provider network route, hardware allocation and hidden model internals are not exposed.'))}<details><summary>Available evidence for this concept</summary>${context.evidence
             .filter((e) => e.kind !== 'text-update')
             .map((e) => `<h4>${esc(e.kind)}</h4>${evidenceMarkup(e.evidence)}`)
             .join('')}</details>`
@@ -558,6 +712,8 @@ export class LiveWorkspace {
     this.hold.sync(this.readingContext(), this.last);
   }
   dispose() {
+    ++this.imageRead;
+    this.image = undefined;
     this.unsubscribe();
     this.stopFrames();
     this.scene?.dispose();

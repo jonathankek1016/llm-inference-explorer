@@ -45,30 +45,59 @@ export class LiveJourney {
     for (const event of request.events) {
       if (event.sequence <= this.sequence) continue;
       this.sequence = event.sequence;
-      if (event.kind === 'input') this.builder.appendEvent(event, 'Your submitted text');
+      if (event.kind === 'input')
+        this.builder.appendEvent(
+          event,
+          request.requestType === 'IMAGE_UNDERSTANDING'
+            ? 'Your submitted image'
+            : request.requestType === 'IMAGE_GENERATION'
+              ? 'Your generation prompt'
+              : 'Your submitted text',
+        );
+      else if (event.kind === 'image-metadata') this.builder.appendEvent(event, 'Local image metadata');
       else if (event.kind === 'preparation') this.builder.appendEvent(event, 'Preparing the request');
       else if (event.kind === 'request-sent') {
         this.builder.appendEvent({ ...event, conceptId: 'device' }, 'Request dispatched by this app');
-        this.builder.appendTeaching('A representative model concept', 'block', {
-          kind: 'ILLUSTRATIVE',
-          source: 'AUTHORED',
-          basis: 'Shared transformer teaching model; the provider architecture is unknown',
-          value: 'This model explains a concept. It is not a measurement of this request.',
-        });
+        const exhibits =
+          request.requestType === 'IMAGE_UNDERSTANDING'
+            ? [
+                ['patches', 'An illustrative vision encoder'],
+                ['fusion', 'An illustrative multimodal connection'],
+              ]
+            : request.requestType === 'IMAGE_GENERATION'
+              ? [
+                  ['conditioning', 'Illustrative text conditioning'],
+                  ['noise', 'Illustrative latent noise'],
+                  ['denoise', 'An illustrative generation method'],
+                ]
+              : [['block', 'A representative model concept']];
+        for (const [concept, title] of exhibits)
+          this.builder.appendTeaching(title, concept, {
+            kind: 'ILLUSTRATIVE',
+            source: 'AUTHORED',
+            basis:
+              request.requestType === 'IMAGE_GENERATION'
+                ? 'Example diffusion-family teaching model; generation does not prove diffusion, latent noise or denoising steps were used'
+                : 'Shared teaching model; the provider architecture and hidden tensors are unknown',
+            value:
+              'This 3D model explains a concept. It is not a measurement or the actual media result of this request.',
+          });
       } else if (
-        ['text-update', 'result-text', 'error'].includes(event.kind) ||
+        ['text-update', 'result-text', 'result-media', 'error'].includes(event.kind) ||
         (event.kind === 'request-state' &&
           event.evidence.kind !== 'UNKNOWN' &&
           ['FAILED', 'CANCELLED'].includes(String(event.evidence.value)))
       ) {
         if (!this.responseStage)
           this.responseStage = this.builder.appendEvent(
-            { ...event, conceptId: 'response' },
+            { ...event, conceptId: event.kind === 'result-media' ? 'image-output' : 'response' },
             event.kind === 'error'
               ? 'Request error'
               : event.kind === 'request-state'
                 ? 'Request ended'
-                : 'Returned response',
+                : event.kind === 'result-media'
+                  ? 'Returned generated image'
+                  : 'Returned response',
           )?.id;
         else this.builder.annotate(this.responseStage, event);
       } else if (this.responseStage) this.builder.annotate(this.responseStage, event);

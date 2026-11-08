@@ -23,7 +23,7 @@ export interface CapabilityAssertion {
   readonly origin: 'ADAPTER_CONTRACT' | 'BACKEND_DECLARATION' | 'UNADVERTISED';
 }
 export interface LiveCapabilities {
-  readonly adapterId: 'chat-completions-text';
+  readonly adapterId: 'chat-completions-text' | 'chat-completions-image' | 'image-generation';
   readonly adapter: Readonly<Record<LiveFeature, CapabilityAssertion>>;
   readonly backend: Readonly<Record<LiveFeature, CapabilityAssertion>>;
 }
@@ -76,5 +76,44 @@ export function checkTextCapabilities(
   return requested.filter(
     (feature) =>
       profile.adapter[feature].support !== 'SUPPORTED' || profile.backend[feature].support === 'UNSUPPORTED',
+  );
+}
+
+/** Image features require positive, connection-scoped declarations; unknown stays disabled. */
+export function mediaCapabilities(
+  kind: 'IMAGE_UNDERSTANDING' | 'IMAGE_GENERATION',
+  declarations: Partial<Record<LiveFeature, CapabilitySupport>> = {},
+): LiveCapabilities {
+  const base = textCapabilities(declarations);
+  const features: LiveFeature[] =
+    kind === 'IMAGE_UNDERSTANDING'
+      ? ['text', 'imageText', 'streaming', 'cancellation', 'usage', 'finishReason', 'logprobs']
+      : ['imageGeneration', 'generatedMedia', 'cancellation', 'usage'];
+  return immutableCopy({
+    ...base,
+    adapterId: kind === 'IMAGE_UNDERSTANDING' ? 'chat-completions-image' : 'image-generation',
+    adapter: Object.fromEntries(
+      liveFeatures.map((f) => [
+        f,
+        { support: features.includes(f) ? 'SUPPORTED' : 'UNSUPPORTED', origin: 'ADAPTER_CONTRACT' },
+      ]),
+    ) as Record<LiveFeature, CapabilityAssertion>,
+  });
+}
+export function checkMediaCapabilities(
+  profile: LiveCapabilities,
+  kind: 'IMAGE_UNDERSTANDING' | 'IMAGE_GENERATION',
+  options: { stream: boolean; logprobs: boolean },
+) {
+  const requested: LiveFeature[] =
+    kind === 'IMAGE_GENERATION'
+      ? ['imageGeneration', 'generatedMedia']
+      : [
+          'imageText',
+          ...(options.stream ? ['streaming' as const] : []),
+          ...(options.logprobs ? ['logprobs' as const] : []),
+        ];
+  return requested.filter(
+    (f) => profile.adapter[f].support !== 'SUPPORTED' || profile.backend[f].support !== 'SUPPORTED',
   );
 }

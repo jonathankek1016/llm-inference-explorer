@@ -1,3 +1,5 @@
+import { normalizeGeneratedImages } from './live-media.ts';
+import type { ImageInput, GeneratedImage } from './live-media.ts';
 export interface Candidate {
   token: string;
   logprob: number;
@@ -66,9 +68,66 @@ export function validateEndpoint(value: string): string {
     throw new Error('Use HTTPS, or HTTP for a localhost endpoint.');
   return url.href.replace(/\/$/, '');
 }
+type ChatMessage = {
+  role: string;
+  content: string | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
+};
 export async function requestText(
   config: ProviderConfig,
   messages: { role: string; content: string }[],
+  signal: AbortSignal,
+  onData: (text: string, event: string) => void,
+  fetcher: typeof fetch = fetch,
+): Promise<ProviderResult> {
+  return requestChat(config, messages, signal, onData, fetcher);
+}
+export async function requestImageUnderstanding(
+  config: ProviderConfig,
+  image: ImageInput,
+  prompt: string,
+  signal: AbortSignal,
+  onData: (text: string, event: string) => void,
+  fetcher: typeof fetch = fetch,
+): Promise<ProviderResult> {
+  const content: Exclude<ChatMessage['content'], string> = [];
+  if (prompt) content.push({ type: 'text', text: prompt });
+  content.push({ type: 'image_url', image_url: { url: image.dataUrl } });
+  return requestChat(config, [{ role: 'user', content }], signal, onData, fetcher);
+}
+export interface ImageGenerationResult {
+  media: GeneratedImage[];
+  metadata: Record<string, unknown>;
+  usage?: Record<string, number>;
+}
+export async function requestImageGeneration(
+  config: ProviderConfig,
+  prompt: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<ImageGenerationResult> {
+  const response = await fetcher(`${validateEndpoint(config.url)}/images/generations`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}),
+    },
+    body: JSON.stringify({ model: config.model, prompt, n: 1 }),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Image generation failed (HTTP ${response.status}). Check connection and declared support.`,
+    );
+  const data = await response.json();
+  const media = normalizeGeneratedImages(data.data);
+  const metadata: Record<string, unknown> = {};
+  for (const field of ['created', 'size', 'quality', 'output_format', 'background'])
+    if (typeof data[field] === 'string' || typeof data[field] === 'number') metadata[field] = data[field];
+  return { media, metadata, ...(data.usage && typeof data.usage === 'object' ? { usage: data.usage } : {}) };
+}
+async function requestChat(
+  config: ProviderConfig,
+  messages: ChatMessage[],
   signal: AbortSignal,
   onData: (text: string, event: string) => void,
   fetcher: typeof fetch = fetch,

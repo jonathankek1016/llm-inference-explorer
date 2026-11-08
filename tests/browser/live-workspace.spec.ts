@@ -74,7 +74,7 @@ test('parked Live request completes in Explore; manual return stays detached and
   await page.locator('#live-inspector [data-explore-reference]').click();
   await expect(root(page, 'EXPLORE')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('#explore-workspace')).toHaveAttribute('data-concept', 'context');
-  await expect(page.locator('#global-session-label')).toContainText('Live Lab · Text · Session parked');
+  await expect(page.locator('#global-session-label')).toContainText('Live Lab · Session parked');
   await expect(page.locator('#explore-workspace .world-callout[data-role="guided"]')).toHaveCount(0);
   await finish();
   await expect(page.locator('#live-workspace')).toHaveAttribute('data-request-state', 'COMPLETED');

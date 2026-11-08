@@ -1,3 +1,4 @@
+import type { LiveRequestType } from './live-input.ts';
 import { concepts, scenarios } from './content.ts';
 import { conceptRegistry } from './concept-registry.ts';
 import { makeTrace } from './core.ts';
@@ -34,6 +35,8 @@ export interface LiveContextOverlay {
   readonly conceptId: string;
   readonly requestId: LiveRequestId;
   readonly state: LiveRequestState;
+  readonly requestType?: LiveRequestType;
+  readonly mediaIds?: readonly string[];
   readonly sessionId?: GuidedSessionId;
   readonly evidence: readonly LiveEvent[];
   readonly capabilities: LiveCapabilities;
@@ -50,6 +53,8 @@ export function liveContext(request: LiveRequestSnapshot, conceptId: string): Li
     requestId: request.id,
     conceptId,
     state: request.state,
+    requestType: request.requestType,
+    mediaIds: request.media?.map((media) => media.id),
     capabilities: request.capabilities,
     result: request.result,
     error: request.error,
