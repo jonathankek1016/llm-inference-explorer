@@ -311,7 +311,7 @@ test('catalogue placement is extensible without a Demo scene; root/category chro
   const before = (await visual(page, 'explore-viewport')).camera;
   await page.locator('#explore-reference-close').click();
   await expect(page.locator('.explore-reference')).toBeHidden();
-  await page.locator('#explore-contents-toggle').click();
+  await page.locator('#explore-contents-close').click();
   await expect(page.locator('.explore-contents')).toBeHidden();
   await page.clock.runFor(300);
   expectCameraClose((await visual(page, 'explore-viewport')).camera, before);

@@ -140,6 +140,10 @@
   --left: 16.625rem;
   --right: 18.5rem;
   --margin: 1.75rem;
+  --shell-left-max-height: 40.625rem;
+  --shell-right-max-height: 43.5rem;
+  --shell-panel-padding: 1.1875rem;
+  --shell-header-top: 0.875rem;
 }
 * {
   box-sizing: border-box;
@@ -510,7 +514,7 @@ svg {
 .journey-panel {
   left: var(--margin);
   width: var(--left);
-  max-height: 40.625rem;
+  max-height: var(--shell-left-max-height);
   resize: horizontal;
   min-width: 15rem;
   max-width: 20rem;
@@ -518,7 +522,7 @@ svg {
 .inspector-panel {
   right: var(--margin);
   width: var(--right);
-  max-height: 43.5rem;
+  max-height: var(--shell-right-max-height);
 }
 .panel-heading {
   display: flex;
@@ -716,7 +720,7 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.875rem 1.1875rem 0;
+  padding: var(--shell-header-top) var(--shell-panel-padding) 0;
 }
 .inspector-top .eyebrow {
   font-size: 0.5rem;
@@ -1593,12 +1597,19 @@ dialog::backdrop {
 dialog p {
   font-size: 0.75rem;
 }
-dialog form > label:not(.check-row) {
+dialog form > label:not(.check-row),
+dialog .media-configuration > label {
   display: block;
   font-size: 0.6875rem;
   margin: 1.1875rem 0 0.5rem;
 }
-dialog form > input:not([type='checkbox']) {
+dialog form > input:not([type='checkbox']),
+dialog .media-configuration > input,
+dialog .media-configuration > select {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 0.4375rem;
@@ -1739,6 +1750,8 @@ dialog form > input:not([type='checkbox']) {
     --left: 17.625rem;
     --right: 19.875rem;
     --margin: 2.25rem;
+    --shell-left-max-height: 44.375rem;
+    --shell-right-max-height: 48.125rem;
   }
   .masthead {
     height: 7.1875rem;
@@ -1763,12 +1776,6 @@ dialog form > input:not([type='checkbox']) {
   }
   .stage-group {
     font-size: 0.5625rem;
-  }
-  .journey-panel {
-    max-height: 44.375rem;
-  }
-  .inspector-panel {
-    max-height: 48.125rem;
   }
   #inspector-body > p {
     font-size: 0.75rem;
@@ -3121,8 +3128,8 @@ select option {
 /* The canvas is the page; navigation and reference float over its edges. */
 .explore-workspace {
   --atlas-edge: calc(var(--masthead-height) + 4.5rem);
-  --catalogue-width: 16rem;
-  --reference-width: 21rem;
+  --catalogue-width: var(--left);
+  --reference-width: var(--right);
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -3176,14 +3183,9 @@ select option {
   position: absolute;
   text-align: center;
 }
-.explore-intro h1 {
-  font-size: clamp(1.3rem, 2.2vw, 2.2rem);
-  margin: 0.5rem 0;
-  letter-spacing: -0.05em;
-}
 #explore-view-note {
-  line-height: 1.6;
-  margin: 0.4rem 0;
+  line-height: 1.5;
+  margin: 0;
 }
 .explore-panel-toggle {
   position: absolute;
@@ -3394,8 +3396,6 @@ select option {
   }
   .explore-workspace {
     --atlas-edge: calc(var(--masthead-height) + 7rem);
-    --catalogue-width: 14rem;
-    --reference-width: 19rem;
   }
   #app[data-workspace='EXPLORE'][data-guided-session] .explore-workspace {
     --atlas-edge: calc(var(--masthead-height) + 10rem);
@@ -3775,4 +3775,92 @@ select option {
 }
 .media-configuration select {
   width: 100%;
+}
+
+/* Shared desktop shell follows Demo; narrow-screen sheets keep their existing layout. */
+@media (min-width: 981px) {
+  .explore-workspace,
+  #app[data-workspace='EXPLORE'][data-guided-session] .explore-workspace,
+  .live-workspace {
+    --atlas-edge: var(--workspace-top);
+    --live-edge: var(--workspace-top);
+  }
+  .explore-workspace .panel,
+  .live-runtime,
+  .live-inspector {
+    top: var(--workspace-top);
+  }
+  .explore-workspace .panel {
+    bottom: 3.4rem;
+    padding: var(--shell-header-top) var(--shell-panel-padding) var(--shell-panel-padding);
+  }
+  .explore-workspace .explore-contents {
+    bottom: auto;
+    max-height: min(var(--shell-left-max-height), calc(100% - var(--workspace-top) - 3.4rem));
+  }
+  .explore-reference {
+    max-height: var(--shell-right-max-height);
+  }
+  .explore-panel-toggle {
+    top: var(--workspace-top);
+  }
+  .explore-panel-toggle[aria-expanded='true'] {
+    display: none;
+  }
+  .live-runtime {
+    width: var(--left);
+    max-height: var(--shell-left-max-height);
+  }
+  .live-inspector {
+    width: var(--right);
+    max-height: var(--shell-right-max-height);
+  }
+  #explore-framing,
+  #live-framing {
+    top: var(--canvas-top);
+  }
+  #live-framing {
+    left: calc(var(--left) + var(--margin) + 1rem);
+    right: calc(var(--right) + var(--margin) + 1rem);
+  }
+  .live-camera {
+    right: calc(var(--right) + var(--margin) + 0.8125rem);
+  }
+}
+.explore-contents-heading,
+.live-workspace .panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.explore-reference .inspector-top {
+  padding: 0;
+}
+.live-workspace .panel-heading {
+  padding: var(--shell-header-top) var(--shell-panel-padding) 0;
+}
+.live-panel-body {
+  padding: var(--shell-panel-padding);
+}
+.live-capability-status {
+  margin: 0.75rem 0;
+}
+.live-capability-status dt {
+  font-weight: 600;
+  margin-top: 0.65rem;
+}
+.live-capability-status dd {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+.live-capability-status ul {
+  margin: 0.2rem 0;
+  padding-left: 1rem;
+}
+#live-capability-settings {
+  white-space: normal;
+  text-align: left;
 }

@@ -62,7 +62,7 @@ export class ExploreBrowser {
     host.innerHTML = `<section class="explore-atlas" aria-label="Explore 3D atlas">
         <div class="explore-stage"><div id="explore-viewport" class="viewport"></div></div>
         <div id="explore-framing" aria-hidden="true"></div>
-        <header class="explore-intro"><span class="eyebrow">THE SPATIAL CATALOGUE</span><h1 id="explore-gallery-title"></h1><p id="explore-view-note" class="small" role="status"></p></header>
+        <header class="explore-intro scene-intro"><span class="eyebrow">THE SPATIAL CATALOGUE</span><h1 id="explore-gallery-title"></h1><p id="explore-view-note" class="small" role="status"></p></header>
         <div class="explore-view-controls">
           <label><span class="sr-only">Gallery</span><select id="explore-view" aria-label="Explore atlas view">${exploreGalleries.map((view) => `<option value="${view.id}">${escape(view.title)}</option>`).join('')}</select></label>
           <div role="group" aria-label="Explore camera tools">
@@ -80,10 +80,12 @@ export class ExploreBrowser {
     this.applyPanels();
     host.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLElement>('button');
-      if (button?.id === 'explore-contents-toggle') {
+      if (button?.id === 'explore-contents-toggle' || button?.id === 'explore-contents-close') {
         host.dataset.contentsOpen = String(host.dataset.contentsOpen !== 'true');
         if (matchMedia('(max-width: 700px)').matches) host.dataset.inspectorOpen = 'false';
         this.applyPanels();
+        if (button.id === 'explore-contents-close')
+          host.querySelector<HTMLElement>('#explore-contents-toggle')!.focus();
       }
       if (button?.id === 'explore-reference-toggle' || button?.id === 'explore-reference-close') {
         host.dataset.inspectorOpen = String(host.dataset.inspectorOpen !== 'true');
@@ -146,7 +148,7 @@ export class ExploreBrowser {
     this.host.querySelector('#explore-gallery-title')!.textContent =
       categoryId === 'all' ? 'The concept atlas' : category.title;
     this.host.querySelector('.explore-contents')!.innerHTML = `
-        <span class="eyebrow">EXPLORE / CONTENTS</span>
+        <div class="explore-contents-heading"><span class="eyebrow">EXPLORE / CONTENTS</span><button id="explore-contents-close" class="small-icon" aria-label="Close Explore contents">${icon('minus')}</button></div>
         <nav class="explore-breadcrumbs" aria-label="Explore breadcrumbs">${path
           .map(
             (item, i) =>

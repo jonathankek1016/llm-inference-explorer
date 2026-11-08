@@ -373,6 +373,24 @@ export class LiveWorkspace {
         this.$<HTMLInputElement>('image-file').value = '';
         this.render();
         break;
+      case 'live-capability-settings': {
+        this.ports.settings();
+        const connection = this.ports.config();
+        let field = !connection.model.trim() ? 'provider-model' : '';
+        try {
+          validateEndpoint(connection.url);
+        } catch {
+          field = 'provider-url';
+        }
+        const declarations = document.querySelector<HTMLDetailsElement>('.media-configuration')!;
+        declarations.open = true;
+        const target = field
+          ? document.getElementById(field)!
+          : declarations.querySelector<HTMLElement>('summary')!;
+        target.focus();
+        target.scrollIntoView({ block: 'center' });
+        break;
+      }
       case 'live-settings':
         this.ports.settings();
         break;
@@ -467,6 +485,59 @@ export class LiveWorkspace {
       : !checkMediaCapabilities(mediaCapabilities(kind, mediaDeclarations(this.ports.config())), kind, config)
           .length;
   }
+  /** Explanations only: configured() and the existing capability gates still decide availability. */
+  private capabilityGuidance(kind: LiveRequestType) {
+    const config = this.requestConfig(kind);
+    const reasons: string[] = [];
+    let missingConfiguration = false;
+    try {
+      validateEndpoint(config.url);
+    } catch {
+      missingConfiguration = true;
+      reasons.push(
+        config.url.trim()
+          ? 'Valid connection URL required (HTTPS, or localhost HTTP).'
+          : 'Connection configuration required.',
+      );
+    }
+    if (!config.model.trim()) {
+      missingConfiguration = true;
+      reasons.push(
+        kind === 'IMAGE_GENERATION' ? 'Image-generation model required.' : 'Model identifier required.',
+      );
+    }
+    let unsupported = false;
+    if (kind !== 'TEXT') {
+      const profile = mediaCapabilities(kind, mediaDeclarations(this.ports.config()));
+      const labels: Record<string, string> = {
+        imageText: 'Image + text support',
+        imageGeneration: 'Image-generation endpoint support',
+        generatedMedia: 'Generated-media return support',
+        streaming: 'Image-understanding streaming',
+        logprobs: 'Image-understanding logprobs',
+      };
+      for (const feature of checkMediaCapabilities(profile, kind, config)) {
+        const support = profile.backend[feature].support;
+        unsupported ||= support === 'UNSUPPORTED';
+        reasons.push(
+          `${labels[feature] ?? feature} is ${support === 'UNSUPPORTED' ? 'explicitly Unsupported' : 'Unknown / not advertised'}.`,
+        );
+      }
+    }
+    const ready = this.configured(kind);
+    return {
+      kind,
+      ready,
+      reasons,
+      status: ready
+        ? 'Ready'
+        : missingConfiguration
+          ? 'Not configured'
+          : unsupported
+            ? 'Unsupported'
+            : 'Unknown',
+    };
+  }
   refreshConfiguration() {
     this.render();
   }
@@ -478,7 +549,6 @@ export class LiveWorkspace {
     this.host.dataset.requestState = this.request?.state ?? 'IDLE';
     this.host.dataset.requestId = this.request?.id ?? '';
     const config = this.requestConfig();
-    const declarations = mediaDeclarations(this.ports.config());
     this.$('connection').textContent = this.configured()
       ? `${this.requestType === 'IMAGE_GENERATION' ? 'Image generation' : 'Chat Completions'} adapter · ${config.model}`
       : 'Configure the endpoint, model and documented image support in Settings.';
@@ -486,14 +556,25 @@ export class LiveWorkspace {
     type.disabled = busy || j.active;
     for (const option of type.options)
       option.disabled = option.value !== 'TEXT' && !this.configured(option.value as LiveRequestType);
+    const names: Record<LiveRequestType, string> = {
+      TEXT: 'Text',
+      IMAGE_UNDERSTANDING: 'Image understanding',
+      IMAGE_GENERATION: 'Image generation',
+    };
+    const guidance = (Object.keys(names) as LiveRequestType[]).map((kind) => this.capabilityGuidance(kind));
+    this.$('capability-status').innerHTML = guidance
+      .map(
+        ({ kind, status, reasons }) =>
+          `<dt>${names[kind]}</dt><dd data-capability="${kind}"><strong>${status}</strong>${reasons.length ? `<ul>${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul>` : ''}</dd>`,
+      )
+      .join('');
     this.$('media-support').textContent =
-      `Image input: ${declarations.imageText ?? 'UNKNOWN'}. Image generation: ${declarations.imageGeneration ?? 'UNKNOWN'}. Media return: ${declarations.generatedMedia ?? 'UNKNOWN'}. Set documented support in Model connection.`;
+      guidance
+        .filter((item) => item.kind !== 'TEXT')
+        .map((item) => `${names[item.kind]}: ${item.status}.`)
+        .join(' ') + ' See Request capabilities for requirements.';
     this.$('capabilities').textContent =
-      this.requestType === 'TEXT'
-        ? `Text transport and client cancellation supported. Backend capabilities are not advertised; sending is an explicit text request. Streaming ${config.stream ? 'requested' : 'off'}; logprobs ${config.logprobs ? 'requested if supported' : 'off'}. Usage and finish reason appear only if returned. No automatic retries.`
-        : `Image support is explicitly declared for this connection, not inferred from its name. ${this.requestType === 'IMAGE_GENERATION' ? 'One image via /images/generations. No simulated progress or streaming.' : `Image + text via /chat/completions. Streaming ${config.stream ? 'requested (declared supported)' : 'off'}; logprobs ${config.logprobs ? 'requested (declared supported)' : 'off'}.`} Client cancellation aborts transport; remote computation may continue. Usage and metadata are shown only when returned.`;
-    this.$('capabilities').textContent +=
-      ' Declarations are user supplied, not provider verified; there is no automatic discovery. Chat adapters can read structured function calls and URL citations when returned. App tool execution, MCP, retrieval and web search are unavailable; hidden provider activity remains unknown.';
+      'Support declarations come from your configuration, not automatic provider detection. Chat adapters read returned function calls and citations; app-owned tool, MCP, retrieval and search execution remain unavailable. Client cancellation does not guarantee remote computation stops.';
     if (this.request) {
       const caps = this.request.capabilities;
       this.$('capabilities').textContent +=
