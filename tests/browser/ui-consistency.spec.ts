@@ -81,11 +81,17 @@ for (const width of [1440, 900, 390]) {
         .evaluateAll((elements) =>
           elements.map((e) => {
             const c = getComputedStyle(e);
-            return { size: c.fontSize, weight: c.fontWeight, line: c.lineHeight, margin: c.margin };
+            return {
+              size: c.fontSize,
+              weight: c.fontWeight,
+              line: c.lineHeight,
+              font: c.fontFamily,
+              color: c.color,
+            };
           }),
         );
       expect(headings[0]).toEqual(headings[1]);
-      expect(parseFloat(headings[2].size)).toBeLessThan(parseFloat(headings[0].size));
+      expect(headings[2]).toEqual(headings[0]);
 
       await summary.focus();
       await page.keyboard.press('Enter');
