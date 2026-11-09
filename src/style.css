@@ -835,7 +835,9 @@ svg {
   font-size: 0.6875rem;
   line-height: 1.8;
 }
-.related h3 {
+.related h3,
+.explore-reference .inspector-section-title,
+.live-panel-body .inspector-section-title {
   font-size: 0.5625rem;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -2711,7 +2713,16 @@ select option {
 .display-settings h3,
 .connection-title {
   font-size: 0.85rem;
+  font-weight: 750;
+  line-height: 1.5;
   margin: 1rem 0 0.6rem;
+}
+dialog .media-configuration > summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--text);
+  cursor: pointer;
 }
 .display-settings .small {
   margin-bottom: 0.4rem;
@@ -3467,11 +3478,27 @@ select option {
 }
 .concept-usages details {
   border-top: 1px solid var(--line);
-  padding: 12px 0;
+  padding: 0.75rem 0;
 }
 .concept-usages summary {
   cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
   line-height: 1.6;
+}
+.concept-usages summary .small {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.concept-usages,
+.concept-sources {
+  margin-top: 1.375rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+.explore-reference .concept-usages > .small {
+  font-size: 0.75rem;
 }
 .concept-usages .explore-reference-links button {
   text-align: left;
@@ -3843,24 +3870,51 @@ select option {
 .live-panel-body {
   padding: var(--shell-panel-padding);
 }
+.live-capability-guide {
+  margin-top: 0.875rem;
+  border-top: 1px solid var(--line);
+}
 .live-capability-status {
-  margin: 0.75rem 0;
+  margin: 0.5rem 0;
+}
+.live-capability-status > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  padding: 0.45rem 0;
+  font-size: 0.6875rem;
+  line-height: 1.5;
 }
 .live-capability-status dt {
-  font-weight: 600;
-  margin-top: 0.65rem;
+  font-weight: 500;
 }
 .live-capability-status dd {
-  margin: 0.15rem 0 0;
-  color: var(--text);
-  font-size: 0.72rem;
-  line-height: 1.6;
+  display: contents;
+  margin: 0;
 }
-.live-capability-status ul {
-  margin: 0.2rem 0;
-  padding-left: 1rem;
+.live-capability-status strong {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  background: var(--soft);
+  color: var(--text);
+}
+.capability-reason {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.625rem;
+}
+#live-capability-guide {
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
 }
 #live-capability-settings {
   white-space: normal;
   text-align: left;
+  color: var(--accent);
+  font-size: 0.6875rem;
+  padding: 0.25rem 0;
 }

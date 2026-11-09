@@ -52,7 +52,6 @@ for (const width of [1920, 1440, 1100]) {
     expect(await geometry(page, '.workspace-nav')).toEqual(tabs);
     expect((await geometry(page, '#live-workspace .scene-intro')).y).toBe(heading.y);
     if (width === 1920) {
-      await page.locator('#live-capability-guide summary').click();
       await page.screenshot({ path: 'artifacts/v4/part75-live-light.png' });
       await page.locator('#theme').click();
       await page.screenshot({ path: 'artifacts/v4/part75-live-dark.png' });
@@ -77,6 +76,17 @@ for (const width of [1440, 900, 390]) {
       const declarations = page.locator('.media-configuration');
       await expect(declarations).toHaveAttribute('open', '');
       const summary = declarations.locator('summary');
+      const headings = await page
+        .locator('#navigation-title, .connection-title, .media-configuration > summary')
+        .evaluateAll((elements) =>
+          elements.map((e) => {
+            const c = getComputedStyle(e);
+            return { size: c.fontSize, weight: c.fontWeight, line: c.lineHeight, margin: c.margin };
+          }),
+        );
+      expect(headings[0]).toEqual(headings[1]);
+      expect(parseFloat(headings[2].size)).toBeLessThan(parseFloat(headings[0].size));
+
       await summary.focus();
       await page.keyboard.press('Enter');
       await expect(declarations).not.toHaveAttribute('open', '');
@@ -146,7 +156,6 @@ test('capability guidance explains missing configuration and preserves Unknown/U
   );
   await open(page);
   await root(page, 'LIVE').click();
-  await page.locator('#live-capability-guide summary').click();
   const text = page.locator('[data-capability="TEXT"]');
   const understanding = page.locator('[data-capability="IMAGE_UNDERSTANDING"]');
   const generation = page.locator('[data-capability="IMAGE_GENERATION"]');
@@ -199,3 +208,78 @@ test('capability guidance explains missing configuration and preserves Unknown/U
   await expect(generationOption).toBeDisabled();
   await expect(text).toHaveText('Ready');
 });
+
+for (const width of [1440, 900, 390]) {
+  test(`compact capability rows and Inspector section hierarchy remain readable at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await open(page);
+    for (const theme of ['light', 'dark']) {
+      if (theme === 'dark') await page.locator('#theme').click();
+      await root(page, 'LIVE').click();
+      if (!(await page.locator('#live-runtime').isVisible()))
+        await page.locator('[data-live-panel="runtime"]').click();
+      const status = page.locator('#live-capability-status');
+      await expect(page.getByRole('heading', { name: 'Request capabilities', level: 2 })).toBeVisible();
+      await expect(status.locator('dt')).toHaveText(['Text', 'Image understanding', 'Image generation']);
+      await expect(status.locator('strong')).toHaveText([
+        'Not configured',
+        'Not configured',
+        'Not configured',
+      ]);
+      await expect(page.locator('#live-capability-guide')).not.toHaveAttribute('open', '');
+      await expect(page.locator('#live-request-type')).toHaveJSProperty('tagName', 'SELECT');
+      await expect(page.locator('#live-request-type option[value="IMAGE_UNDERSTANDING"]')).toBeDisabled();
+      await expect(page.locator('#live-request-type option[value="IMAGE_GENERATION"]')).toBeDisabled();
+      expect(await status.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+      await page.locator('#live-capability-settings').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `artifacts/v4/part751-live-${theme}-${width}.png` });
+      await page.locator('#live-capability-settings').click();
+      await expect(page.locator('#settings-dialog')).toBeVisible();
+      await expect(page.locator('.media-configuration')).toHaveAttribute('open', '');
+      await page.locator('#settings-dialog .dialog-actions [data-close]').click();
+      await root(page, 'EXPLORE').click();
+      for (const id of ['internet', 'decode']) {
+        await page.locator('#search-open').click();
+        await page.locator('#search-input').fill(id);
+        await page.locator(`[data-search-concept="${id}"]`).click();
+        const usages = page.locator('.concept-usages');
+        const rows = usages.locator('details');
+        for (const row of await rows.all()) {
+          const count = await row.locator('[data-demo-usage]').count();
+          await expect(row.locator('summary')).toContainText(
+            `(${count} ${count === 1 ? 'location' : 'locations'})`,
+          );
+        }
+        const first = rows.first();
+        await first.locator('summary').focus();
+        await page.keyboard.press('Enter');
+        await expect(first).toHaveAttribute('open', '');
+        await expect(first.locator('[data-demo-usage]').first()).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(first).not.toHaveAttribute('open', '');
+        const usageHeading = usages.getByRole('heading', { name: 'Used in Demo' });
+        const sourcesHeading = page.locator('.concept-sources h2');
+        const style = (e: Element) => {
+          const c = getComputedStyle(e);
+          return {
+            size: c.fontSize,
+            weight: c.fontWeight,
+            spacing: c.letterSpacing,
+            transform: c.textTransform,
+          };
+        };
+        expect(await usageHeading.evaluate(style)).toEqual(await sourcesHeading.evaluate(style));
+        await expect(page.locator('.concept-sources a').first()).toHaveAttribute('href', /^https?:/);
+        if (id === 'internet') {
+          await usages.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: `artifacts/v4/part751-explore-${theme}-${width}.png` });
+        }
+        expect(
+          await page.locator('#explore-reference').evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
+        ).toBe(true);
+      }
+    }
+  });
+}

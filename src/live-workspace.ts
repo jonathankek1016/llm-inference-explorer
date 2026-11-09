@@ -565,14 +565,9 @@ export class LiveWorkspace {
     this.$('capability-status').innerHTML = guidance
       .map(
         ({ kind, status, reasons }) =>
-          `<dt>${names[kind]}</dt><dd data-capability="${kind}"><strong>${status}</strong>${reasons.length ? `<ul>${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul>` : ''}</dd>`,
+          `<div><dt>${names[kind]}</dt><dd data-capability="${kind}"><strong>${status}</strong>${reasons.length ? `<span class="capability-reason">${reasons.map(esc).join(' ')}</span>` : ''}</dd></div>`,
       )
       .join('');
-    this.$('media-support').textContent =
-      guidance
-        .filter((item) => item.kind !== 'TEXT')
-        .map((item) => `${names[item.kind]}: ${item.status}.`)
-        .join(' ') + ' See Request capabilities for requirements.';
     this.$('capabilities').textContent =
       'Support declarations come from your configuration, not automatic provider detection. Chat adapters read returned function calls and citations; app-owned tool, MCP, retrieval and search execution remain unavailable. Client cancellation does not guarantee remote computation stops.';
     if (this.request) {

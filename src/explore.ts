@@ -173,7 +173,7 @@ export class ExploreBrowser {
     const concept = conceptRegistry[id];
     const reference = exploreReference(id)!;
     const usages = usageGraph.forConcept(id).filter((usage) => usage.workspace === 'DEMO');
-    const usageSection = `<section class="concept-usages"><h2>Used in Demo</h2>
+    const usageSection = `<section class="concept-usages"><h2 class="inspector-section-title">Used in Demo</h2>
       <p class="small">Authored lesson locations. Opening a location does not start a journey.</p>
       ${
         usages.length
@@ -181,7 +181,7 @@ export class ExploreBrowser {
               .map((scenario) => {
                 const locations = usages.filter((usage) => usage.scenarioId === scenario.id);
                 return locations.length
-                  ? `<details><summary>${escape(scenario.name)} <span class="small">(${locations.length} locations)</span></summary><div class="explore-reference-links">${locations.map((usage) => `<button data-demo-usage="${escape(usage.id)}"><span>${usage.local ? 'On-device' : 'Cloud service'} · Stage ${usage.stageIndex + 1} / ${usage.stageCount} · ${escape(concept.title)}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></details>`
+                  ? `<details><summary>${escape(scenario.name)} <span class="small">(${locations.length} ${locations.length === 1 ? 'location' : 'locations'})</span></summary><div class="explore-reference-links">${locations.map((usage) => `<button data-demo-usage="${escape(usage.id)}"><span>${usage.local ? 'On-device' : 'Cloud service'} · Stage ${usage.stageIndex + 1} / ${usage.stageCount} · ${escape(concept.title)}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></details>`
                   : '';
               })
               .join('')
@@ -195,7 +195,9 @@ export class ExploreBrowser {
       <p class="explore-note">Conceptual reference, not evidence of a live request. Examples and spatial descriptions refer to the atlas’s illustrative models.</p>
       ${concept.connectedIds.length ? `<section class="related"><h2>Connected concepts</h2><div class="explore-reference-links">${concept.connectedIds.map((related) => conceptLink(related)).join('')}</div></section>` : ''}
       ${usageSection}
-      <section><h2>Sources</h2><div class="source-list">${referenceSources(id)
+      <section class="concept-sources"><h2 class="inspector-section-title">Sources</h2><div class="source-list">${referenceSources(
+        id,
+      )
         .map(
           (source) =>
             `<a href="${escape(source.url)}" target="_blank" rel="noreferrer">${escape(source.title)} ↗</a>`,
