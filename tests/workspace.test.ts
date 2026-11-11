@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { demoCompatibilityHost, workspaces } from '../src/workspace.ts';
 import type { NavigationIntent } from '../src/workspace.ts';
 
-test('root identity defaults to Demo independently of journey mode and concept destination', () => {
+test('Demo compatibility identity stays independent of the root default and concept destination', () => {
   assert.equal(demoCompatibilityHost.workspace, 'DEMO');
   assert.deepEqual(
     workspaces.map((w) => w.id),

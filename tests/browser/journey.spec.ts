@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('Manual and Auto share one timeline; detachment survives mode switches', async ({ page }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.clock.install();
   const mode = page.getByLabel('Journey mode', { exact: true });
@@ -47,12 +48,13 @@ test('object exploration parks Auto; Resume uses the current stage across a scen
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.clock.install();
   await page.locator('#timeline').fill('3');
   await page.getByRole('button', { name: 'Play journey', exact: true }).click();
   await page.clock.runFor(800);
-  await page.locator('.object-label[data-concept="internet"]').click();
+  await page.locator('#demo-host .object-label[data-concept="internet"]').click();
   await expect(page.locator('#inspector-header h2')).toHaveText('Internet backbone');
   await expect(page.locator('#timeline')).toHaveValue('3');
   await expect(page.getByLabel('Journey mode', { exact: true })).toHaveValue('AUTO');
@@ -63,12 +65,15 @@ test('object exploration parks Auto; Resume uses the current stage across a scen
   await page.getByRole('button', { name: 'Next stage', exact: true }).click();
   await expect(page.locator('#timeline')).toHaveValue('4');
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
-  await page.locator('.object-label[data-concept="gpu"]').click();
+  await page.locator('#demo-host .object-label[data-concept="gpu"]').click();
   await expect(page.locator('#inspector-header h2')).toHaveText('GPU accelerator');
   await expect(page.locator('#timeline')).toHaveValue('4');
   await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
   await expect(page.locator('#inspector-header h2')).toHaveText('Service ingress');
-  await expect(page.locator('.object-label[data-concept="ingress"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#demo-host .object-label[data-concept="ingress"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.clock.runFor(6100);
   await expect(page.locator('#timeline')).toHaveValue('5');
 });
@@ -77,6 +82,7 @@ test('orbit and panel changes retain tracking; zoom and pan suspend Auto without
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.clock.install();
   const follow = page.locator('.playback');
@@ -111,12 +117,13 @@ test('orbit and panel changes retain tracking; zoom and pan suspend Auto without
 test('Manual Resume returns from an explored scene and reacquires the official subject', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.getByLabel('Journey mode', { exact: true }).selectOption('MANUAL');
   await page.getByLabel('Illustrative compute route', { exact: true }).selectOption('local');
   await page.getByRole('button', { name: 'Start journey', exact: true }).click();
   await page.getByRole('button', { name: 'Collapse inspector', exact: true }).click();
-  await page.locator('.object-label[data-concept="gpu"]').click();
+  await page.locator('#demo-host .object-label[data-concept="gpu"]').click();
   await expect(page.locator('#scene-title')).toHaveText('On-device compute');
   await expect(page.locator('#timeline')).toHaveValue('0');
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
@@ -126,7 +133,10 @@ test('Manual Resume returns from an explored scene and reacquires the official s
   await expect(page.locator('#timeline')).toHaveValue('0');
   await expect(page.getByLabel('Journey mode', { exact: true })).toHaveValue('MANUAL');
   await expect(page.locator('.playback')).toHaveAttribute('data-advancing', 'false');
-  await expect(page.locator('.object-label[data-concept="device"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#demo-host .object-label[data-concept="device"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   // Resume uses the renderer's focus framing, not just a checkbox/selection update.
   const focused = await page.locator('#viewport canvas').screenshot();
   await page.getByRole('button', { name: 'Reset camera', exact: true }).click();

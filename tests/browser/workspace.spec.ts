@@ -4,6 +4,7 @@ const root = (page: Page, id: string) => page.locator(`.workspace-nav [data-work
 async function prepare(page: Page) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const path = (await response).url();
   await page.clock.install();
@@ -11,7 +12,8 @@ async function prepare(page: Page) {
     const { AtlasScene } = await import(/* @vite-ignore */ path);
     const original = AtlasScene.prototype.setPresentationSuspended;
     AtlasScene.prototype.setPresentationSuspended = function (value: boolean) {
-      (window as any).__workspaceScene = this;
+      if (this.renderer.domElement === document.querySelector('#viewport canvas'))
+        (window as any).__workspaceScene = this;
       original.call(this, value);
     };
   }, path);
@@ -41,15 +43,15 @@ const snapshot = (page: Page) =>
     };
   });
 
-test('inactive host survives root navigation; scaffolds own no replay and keyboard cannot seek hidden Demo', async ({
+test('inactive host survives root navigation; idle Live owns no replay and keyboard cannot seek hidden Demo', async ({
   page,
 }) => {
   await prepare(page);
   await expect(root(page, 'DEMO')).toHaveAttribute('aria-current', 'page');
   await page.locator('#scenario').selectOption('tools');
-  await page.locator('.object-label[data-concept="router"]').focus();
+  await page.locator('#demo-host .object-label[data-concept="router"]').focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.world-callout[data-subject="router"]')).toHaveCount(1);
+  await expect(page.locator('#demo-host .world-callout[data-subject="router"]')).toHaveCount(1);
   await page.clock.runFor(1800);
   const before = await snapshot(page);
   await root(page, 'EXPLORE').click();
@@ -63,8 +65,11 @@ test('inactive host survives root navigation; scaffolds own no replay and keyboa
   await expect(page.locator('#search-dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await root(page, 'LIVE').click();
-  await expect(page.locator('#workspace-title')).toHaveText('Live Lab');
-  await page.getByRole('button', { name: 'Return to Demo Lab' }).click();
+  await expect(page.locator('#live-viewport canvas')).toBeVisible();
+  await expect(page.locator('#live-title')).toHaveText('A real request, an honest view');
+  await expect(page.locator('#live-request-status')).toHaveText('No request yet');
+  await expect(page.locator('#live-playback')).toBeHidden();
+  await root(page, 'DEMO').click();
   await expect(root(page, 'DEMO')).toBeFocused();
   expect(await snapshot(page)).toEqual(before);
   expect((await snapshot(page)).sameRenderer).toBe(true);
@@ -205,6 +210,7 @@ for (const width of [1440, 820, 390])
   test(`root surfaces fit at ${width}px in light and dark`, async ({ page }) => {
     await page.setViewportSize({ width, height: 960 });
     await page.goto('/');
+    await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
     await expect(page.locator('#viewport canvas')).toBeVisible();
     for (const theme of ['light', 'dark']) {
       if (theme === 'dark') await page.locator('#theme').click();

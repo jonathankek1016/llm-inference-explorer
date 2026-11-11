@@ -4,6 +4,7 @@ import { palettes, contrast, mix } from '../../src/theme.ts';
 async function prepare(page: Page, start = true) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const modulePath = (await response).url();
   await page.clock.install();
@@ -41,12 +42,13 @@ async function prepare(page: Page, start = true) {
     await page.clock.runFor(1800);
   }
 }
-const guided = (page: Page) => page.locator('.world-callout[data-role="guided"]');
-const explorer = (page: Page, id: string) => page.locator(`.world-callout[data-callout-id="explore-${id}"]`);
+const guided = (page: Page) => page.locator('#demo-host .world-callout[data-role="guided"]');
+const explorer = (page: Page, id: string) =>
+  page.locator(`#demo-host .world-callout[data-callout-id="explore-${id}"]`);
 const camera = (page: Page) => page.evaluate(() => (window as any).__calloutScene());
 async function label(page: Page, id: string) {
   // Keyboard selection remains available even when a callout overlaps the label.
-  await page.locator(`.object-label[data-concept="${id}"]`).first().focus();
+  await page.locator(`#demo-host .object-label[data-concept="${id}"]`).first().focus();
   await page.keyboard.press('Enter');
   await page.clock.runFor(64);
 }
@@ -128,7 +130,7 @@ test('exploration cards coexist, deduplicate, close independently and return wit
   await expect(explorer(page, 'router')).toBeVisible();
   await expect(explorer(page, 'internet')).toBeVisible();
   await label(page, 'router');
-  await expect(page.locator('.world-callout')).toHaveCount(2);
+  await expect(page.locator('#demo-host .world-callout')).toHaveCount(2);
   await expect(guided(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Hardware', exact: true }).click();
   await expect(explorer(page, 'router')).toBeHidden();
@@ -348,7 +350,7 @@ for (const theme of ['light', 'dark']) {
     await expect(router).toHaveAttribute('data-role', 'exploratory');
     await page.locator('#next').click();
     await page.clock.runFor(1800);
-    await expect(page.locator('.world-callout[data-subject="router"]')).toHaveCount(1);
+    await expect(page.locator('#demo-host .world-callout[data-subject="router"]')).toHaveCount(1);
     await expect(guided(page)).toHaveCount(1);
     await expect(router).toHaveAttribute('data-role', 'guided');
     expect(await router.evaluate((card) => card === (window as any).__pinnedCard)).toBe(true);
@@ -395,7 +397,7 @@ test('repeated decode stages reuse a pinned guided card through Auto, pause and 
   await page.clock.runFor(1800);
   await page.getByLabel('Journey mode', { exact: true }).selectOption('AUTO');
   for (let pass = 1; pass <= 3; pass++) {
-    await expect(page.locator('.world-callout[data-subject="decode"]')).toHaveCount(1);
+    await expect(page.locator('#demo-host .world-callout[data-subject="decode"]')).toHaveCount(1);
     await expect(decode).toHaveAttribute('data-role', 'guided');
     await expect(decode).toContainText(`Pass ${pass}`);
     await expect(decode).toContainText(`${14 + pass} / 18`);
@@ -416,7 +418,7 @@ test('nearby crowding preserves older placements, guided priority, panel clearan
   await page.clock.runFor(1800);
   const placements = () =>
     page
-      .locator('.world-callout:visible')
+      .locator('#demo-host .world-callout:visible')
       .evaluateAll((cards) =>
         Object.fromEntries(
           cards.map((card) => [
@@ -444,10 +446,12 @@ test('nearby crowding preserves older placements, guided priority, panel clearan
     const left = document.querySelector('#journey-panel')!.getBoundingClientRect().right + 12;
     const right = document.querySelector('#inspector-panel')!.getBoundingClientRect().left - 58;
     const bottom = document.querySelector('.playback')!.getBoundingClientRect().top - 56;
-    return [...document.querySelectorAll<HTMLElement>('.world-callout:not([hidden])')].every((card) => {
-      const rect = card.getBoundingClientRect();
-      return rect.left >= left - 1 && rect.right <= right + 1 && rect.bottom <= bottom + 1;
-    });
+    return [...document.querySelectorAll<HTMLElement>('#demo-host .world-callout:not([hidden])')].every(
+      (card) => {
+        const rect = card.getBoundingClientRect();
+        return rect.left >= left - 1 && rect.right <= right + 1 && rect.bottom <= bottom + 1;
+      },
+    );
   });
   expect(check).toBe(true);
   const anchors = (await camera(page)).anchors;

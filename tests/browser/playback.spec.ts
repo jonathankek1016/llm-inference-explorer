@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function prepare(page: Page) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const path = (await response).url();
   await page.clock.install();
@@ -58,7 +59,7 @@ for (const selectedMode of ['AUTO', 'MANUAL'])
     if (selectedMode === 'MANUAL') await page.locator('#theme').click();
     await expect(page.locator('#explore-freely')).toBeHidden();
     // An existing pin must survive completion and the return to free exploration.
-    await page.locator('.object-label[data-concept="router"]').focus();
+    await page.locator('#demo-host .object-label[data-concept="router"]').focus();
     await page.keyboard.press('Enter');
     await page.locator('#start-tour').click();
     await expect(page.locator('#explore-freely')).toBeHidden();
@@ -74,7 +75,7 @@ for (const selectedMode of ['AUTO', 'MANUAL'])
     await expect(page.locator('#stop-tour')).toBeHidden();
     await expect(page.locator('#complete-tour')).toBeHidden();
     await expect(page.locator('#play')).toBeDisabled();
-    await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(1);
+    await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(1);
     const before = await readCamera(page);
     const context = () =>
       page.evaluate(() => {
@@ -95,10 +96,10 @@ for (const selectedMode of ['AUTO', 'MANUAL'])
     await expect(page.locator('#resume-focus')).toBeHidden();
     await expect(page.locator('#play')).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Replay from start', exact: true })).toHaveCount(0);
-    await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
-    await expect(page.locator('.world-callout[data-role="exploratory"][data-subject="router"]')).toHaveCount(
-      1,
-    );
+    await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(0);
+    await expect(
+      page.locator('#demo-host .world-callout[data-role="exploratory"][data-subject="router"]'),
+    ).toHaveCount(1);
     expectCameraUnchanged(await readCamera(page), before);
     expect(await context()).toEqual(view);
     expect((await particle(page)).visible).toBe(false);
@@ -178,7 +179,7 @@ test('Manual final stage offers immediate top-row Complete, preserving guided co
   await stage(page, 17);
   expect(await readCamera(page)).toEqual(camera);
   expect((await particle(page)).visible).toBe(false);
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveAttribute(
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveAttribute(
     'data-subject',
     'response',
   );
@@ -196,7 +197,7 @@ test('Manual final stage offers immediate top-row Complete, preserving guided co
   await page.locator('#stop-tour').click();
   await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
   await expect(page.locator('#complete-tour')).toBeHidden();
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(0);
   expect((await particle(page)).visible).toBe(false);
 });
 
@@ -357,7 +358,7 @@ test('completed Auto offers Replay from start without changing restart or final-
   await expect(page.locator('#play')).toHaveAttribute('aria-label', 'Play journey');
   await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
   await expect(page.locator('.playback')).toHaveAttribute('data-journey-active', 'true');
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveAttribute(
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveAttribute(
     'data-subject',
     'response',
   );
@@ -398,7 +399,7 @@ test('explicit Stop during the final Auto stage remains free exploration, not co
   await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
   await expect(page.locator('#start-tour')).toBeVisible();
   await expect(page.locator('#play')).toBeDisabled();
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(0);
   await expect(page.locator('#replay')).not.toContainText('Replay from start');
 });
 
@@ -467,7 +468,9 @@ test('track click and native thumb drag use equivalent navigation across journey
       page.evaluate(() => ({
         journey: { ...(document.querySelector('.playback') as HTMLElement).dataset },
         play: document.querySelector('#play')!.getAttribute('aria-label'),
-        subject: document.querySelector('.world-callout[data-role="guided"]')?.getAttribute('data-subject'),
+        subject: document
+          .querySelector('#demo-host .world-callout[data-role="guided"]')
+          ?.getAttribute('data-subject'),
         selected: document.querySelector('#inspector-header h2')?.textContent,
       }));
     const destination = await timelinePoint(page, 2);
@@ -614,13 +617,13 @@ test('Stop clears guided ownership and emphasis, preserves exploration, and Star
   await mode(page, 'MANUAL');
   await page.locator('#start-tour').click();
   await page.clock.runFor(1800);
-  await page.locator('.object-label[data-concept="router"]').focus();
+  await page.locator('#demo-host .object-label[data-concept="router"]').focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.world-callout[data-role="exploratory"]')).toHaveCount(1);
+  await expect(page.locator('#demo-host .world-callout[data-role="exploratory"]')).toHaveCount(1);
   const before = await readCamera(page);
   await page.locator('#stop-tour').click();
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
-  await expect(page.locator('.world-callout[data-role="exploratory"]')).toHaveCount(1);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(0);
+  await expect(page.locator('#demo-host .world-callout[data-role="exploratory"]')).toHaveCount(1);
   await expect(page.locator('#guidance-status')).toHaveText('Free exploration');
   await expect(page.locator('#resume-focus')).toBeHidden();
   expect(await readCamera(page)).toEqual(before);
@@ -635,10 +638,10 @@ test('Stop clears guided ownership and emphasis, preserves exploration, and Star
   await page.locator('#start-tour').click();
   await expect(page.locator('#journey-mode')).toHaveValue('MANUAL');
   await advancing(page, false);
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(1);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(1);
   await expect(page.locator('#follow, #fit-scene')).toHaveCount(0);
   await expect(page.locator('#resume-focus')).toHaveCount(1);
-  await expect(page.locator('.viewport-toolbar button')).toHaveCount(3);
+  await expect(page.locator('#demo-host .viewport-toolbar button')).toHaveCount(3);
 });
 
 for (const theme of ['light', 'dark'])

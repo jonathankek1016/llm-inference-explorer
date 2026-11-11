@@ -3,6 +3,7 @@
 async function prepare(page: Page) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/?calibrate=1');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#framing-calibration')).toBeVisible();
   const modulePath = (await response).url();
   await page.clock.install();
@@ -177,8 +178,10 @@ test('normal development UI has no calibration panel and preview drafts are disc
   await prepare(page);
   await edit(page, 'Guided zoom value', 1.1);
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(panel(page).getByRole('spinbutton', { name: 'Guided zoom value' })).toHaveValue('1.65');
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await expect(panel(page)).toHaveCount(0);
 });
@@ -208,7 +211,7 @@ for (const theme of ['light', 'dark']) {
       await panel(page).getByRole('slider', { name: 'Composition Y (px)', exact: true }).fill('20');
       await panel(page).getByRole('combobox', { name: 'Callout region' }).selectOption(region);
       await page.clock.runFor(2000);
-      await expect(page.locator('.world-callout[data-role="guided"]')).toBeVisible();
+      await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toBeVisible();
       const captured = await capture(page);
       expect(captured.stages[`text:cloud:text-${index}`].preferredCalloutRegion).toBe(region);
       await page.screenshot({ path: `artifacts/framing/${theme}-${name}-authoring.png` });
@@ -226,7 +229,7 @@ for (const theme of ['light', 'dark']) {
     await panel(page).locator('summary').click();
     await page.getByRole('button', { name: 'Block', exact: true }).click();
     for (const subject of ['attention', 'mlp']) {
-      await page.locator(`.object-label[data-concept="${subject}"]`).first().focus();
+      await page.locator(`#demo-host .object-label[data-concept="${subject}"]`).first().focus();
       await page.keyboard.press('Enter');
     }
     await page.screenshot({ path: `artifacts/framing/${theme}-block-exploration.png` });

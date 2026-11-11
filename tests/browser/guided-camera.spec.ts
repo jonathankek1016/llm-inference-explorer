@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function prepare(page: Page) {
   const sceneResponse = page.waitForResponse((response) => /\/src\/scene\.ts(?:\?|$)/.test(response.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const modulePath = (await sceneResponse).url();
   await page.clock.install();
@@ -159,7 +160,7 @@ test('panel changes preserve camera; free Focus Selection and cross-scene Resume
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await expect(page.locator('#timeline')).toHaveValue('6');
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
-  await page.locator('.object-label[data-concept="internet"]').click();
+  await page.locator('#demo-host .object-label[data-concept="internet"]').click();
   await page.getByRole('button', { name: 'Focus selection', exact: true }).click();
   await page.clock.runFor(1800);
   near((await read(page)).target, [0, 0.8, -2]);
@@ -186,7 +187,7 @@ test('Auto follows official subjects, orbit stays attached, and only Resume reco
   await expect(page.locator('#timeline')).toHaveValue('1');
   await expect(page.locator('.playback')).toHaveAttribute('data-advancing', 'true');
   // Click another selectable object before its new framing obscures neighbours.
-  await page.locator('.object-label[data-concept="device"]').click();
+  await page.locator('#demo-host .object-label[data-concept="device"]').click();
   await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
   await expect(page.locator('#timeline')).toHaveValue('1');
   await expect(page.getByLabel('Journey mode', { exact: true })).toHaveValue('AUTO');
@@ -205,6 +206,7 @@ test('fresh free exploration does not activate guidance; reduced motion focuses 
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.mouse.move(12, 500);
   await page.mouse.wheel(0, -120);

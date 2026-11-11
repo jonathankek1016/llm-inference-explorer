@@ -30,7 +30,7 @@ export function openCallout<Space extends string>(
 
 export function calloutPresentation(
   journey: JourneyControl,
-  event: TraceEvent,
+  event: TraceEvent | undefined,
   index: number,
   total: number,
   exploration: readonly ExplorationCallout[],
@@ -43,7 +43,7 @@ export function calloutPresentation(
     summary: concepts[item.conceptId].short,
     detail: concepts[item.conceptId].description.split(/(?<=[.!?])\s+/)[0],
   }));
-  if (journey.active) {
+  if (journey.active && event) {
     const concept = concepts[event.conceptId];
     // Presentation ownership changes, but the remembered exploratory pin does not.
     // Reuse its key so the same card can return to its original view after guidance.

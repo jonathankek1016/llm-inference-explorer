@@ -32,7 +32,7 @@ async function open(page: Page, support = true) {
     );
   }, support);
   await page.goto('/');
-  await expect(page.locator('#viewport canvas')).toBeVisible();
+  await expect(page.locator('#explore-viewport canvas')).toBeVisible();
   await root(page, 'LIVE').click();
   await expect(page.locator('#live-viewport canvas')).toBeVisible();
 }
@@ -42,6 +42,28 @@ async function selectImage(page: Page) {
   await expect(page.locator('#live-image-preview')).toBeVisible();
   await expect(page.locator('#live-submit')).toBeEnabled();
 }
+
+test('appending returned evidence retains an open input-metadata disclosure', async ({ page }) => {
+  await open(page);
+  let pending: Route | undefined;
+  await page.route('https://example.test/**', (route) => {
+    pending = route;
+  });
+  await selectImage(page);
+  await page.locator('#live-submit').click();
+  await expect.poll(() => !!pending).toBe(true);
+  await page.locator('#live-receipts > summary').click();
+  const metadata = page.locator('#live-receipt-body details').filter({
+    has: page.locator('summary', { hasText: /^image-metadata$/ }),
+  });
+  await metadata.locator('summary').click();
+  const eventId = await metadata.getAttribute('data-event');
+  await pending!.fulfill({ json: answer });
+  await expect(page.locator('#live-response')).toHaveText('Observed image answer');
+  await expect(metadata).toHaveAttribute('data-event', eventId!);
+  await expect(metadata).toHaveAttribute('open', '');
+  await expect(page.locator('#live-receipt-body')).toContainText('client-timing');
+});
 async function generation(page: Page) {
   await page.locator('#live-request-type').selectOption('IMAGE_GENERATION');
   await page.locator('#live-prompt').fill('Create a small geometric image.');

@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 const root = (page: Page, id: string) => page.locator(`.workspace-nav [data-workspace="${id}"]`);
 async function open(page: Page) {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 }
@@ -124,6 +125,10 @@ for (const width of [1440, 900, 390]) {
         if (i) expect(field.labelTop - fields[i - 1].inputBottom).toBeGreaterThan(12);
       });
       await page.locator('#provider-generation-model').focus();
+      await expect(page.locator('#provider-generation-model')).toHaveAttribute(
+        'placeholder',
+        'Required for image generation',
+      );
       expect(
         await page.locator('#provider-generation-model').evaluate((e) => getComputedStyle(e).outlineStyle),
       ).not.toBe('none');

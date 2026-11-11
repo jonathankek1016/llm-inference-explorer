@@ -3,9 +3,11 @@ import { writeFile } from 'node:fs/promises';
 
 test('existing saved grid intensities are respected without a default migration', async ({ page }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   for (const saved of [0, 50, 100]) {
     await page.evaluate((value) => localStorage.setItem('atlas-grid-intensity', String(value)), saved);
     await page.reload();
+    await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByRole('slider', { name: 'Grid intensity', exact: true })).toHaveValue(
       String(saved),
@@ -20,10 +22,11 @@ test('display intensity autosaves independently and outside dismissal discards c
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   const dialog = page.locator('#settings-dialog');
   const intensity = page.getByRole('slider', { name: 'Grid intensity', exact: true });
   const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.locator('.object-label').first().waitFor();
+  await page.locator('#demo-host .object-label').first().waitFor();
   await open();
   await expect(intensity).toHaveValue('25');
   await page.locator('#provider-url').fill('https://example.com/v1');
@@ -67,6 +70,7 @@ test('display intensity autosaves independently and outside dismissal discards c
   await expect(intensity).toBeDisabled();
   await expect(intensity).toHaveValue('79');
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await open();
   await expect(intensity).toBeDisabled();
   await expect(intensity).toHaveValue('79');
@@ -91,7 +95,7 @@ test('display intensity autosaves independently and outside dismissal discards c
   };
   const labels = () =>
     page
-      .locator('.object-label')
+      .locator('#demo-host .object-label')
       .evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).style.transform));
   const beforeLabels = await labels();
   const before = await renderedCanvas();

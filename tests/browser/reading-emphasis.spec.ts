@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function prepare(page: Page, start = true) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const path = (await response).url();
   await page.clock.install();
@@ -114,7 +115,7 @@ test('tabs, deeper details, selection/copy, keyboard and guided callout use boun
   await expect(page.locator('#timeline')).toHaveValue('0');
   await tracking(page);
   await page.clock.runFor(2000);
-  await page.locator('.world-callout[data-role="guided"] .callout-inspect').click();
+  await page.locator('#demo-host .world-callout[data-role="guided"] .callout-inspect').click();
   await hold(page);
   await expect(page.locator('#inspector-panel')).toHaveAttribute('data-subject-role', 'current');
   await page.clock.runFor(4100);
@@ -163,7 +164,7 @@ test('related, search and world exploration still derail; clearing reading canno
   await page.locator('[data-search-concept="cache"]').click();
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
   await page.locator('#resume-focus').click();
-  await page.locator('.object-label[data-concept="router"]').focus();
+  await page.locator('#demo-host .object-label[data-concept="router"]').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
   await expect(page.locator('#timeline')).toHaveValue('0');
@@ -249,14 +250,14 @@ test('Manual and Auto emphasis follow all open cards while detached; only inacti
   await page.clock.runFor(1800);
   const pins: string[] = [];
   for (const id of ['device', 'internet', 'datacenter', 'response']) {
-    await page.locator(`.object-label[data-concept="${id}"]`).focus();
+    await page.locator(`#demo-host .object-label[data-concept="${id}"]`).focus();
     await page.keyboard.press('Enter');
     pins.push(id);
     await page.clock.runFor(1800);
     for (const pin of pins) await full(pin);
     await full('router');
   }
-  await page.locator('.world-callout[data-subject="internet"] [data-action="close"]').focus();
+  await page.locator('#demo-host .world-callout[data-subject="internet"] [data-action="close"]').focus();
   await page.keyboard.press('Enter');
   await page.clock.runFor(1800);
   await full('internet', 1);
@@ -271,7 +272,7 @@ test('Manual and Auto emphasis follow all open cards while detached; only inacti
   expect(await page.evaluate(() => (window as any).__readingScene.halo.visible)).toBe(true);
   await page.getByRole('button', { name: 'Block', exact: true }).click();
   for (const id of ['attention', 'mlp']) {
-    await page.locator(`.object-label[data-concept="${id}"]`).focus();
+    await page.locator(`#demo-host .object-label[data-concept="${id}"]`).focus();
     await page.keyboard.press('Enter');
   }
   await page.clock.runFor(1800);
@@ -369,7 +370,7 @@ for (const theme of ['light', 'dark'])
     await page.clock.runFor(1800);
     await page.screenshot({ path: `artifacts/v3.1/${theme}-auto-chroma.png` });
     for (const id of ['router', 'internet']) {
-      await page.locator(`.object-label[data-concept="${id}"]`).focus();
+      await page.locator(`#demo-host .object-label[data-concept="${id}"]`).focus();
       await page.keyboard.press('Enter');
     }
     await page.clock.runFor(1800);
@@ -419,12 +420,23 @@ for (const theme of ['light', 'dark'])
     }
     await page.getByRole('button', { name: 'Block', exact: true }).click();
     for (const id of ['attention', 'mlp']) {
-      await page.locator(`.object-label[data-concept="${id}"]`).focus();
+      await page.locator(`#demo-host .object-label[data-concept="${id}"]`).focus();
       await page.keyboard.press('Enter');
     }
     await page.clock.runFor(1800);
     await page.screenshot({ path: `artifacts/part4/${theme}-block-exploration.png` });
-    expect((await effects(page)).every((e: any) => e.amount === 0)).toBe(true);
+    const detachedEffects = await effects(page);
+    expect(detachedEffects.length).toBeGreaterThan(0);
+    for (const owner of ['attention', 'mlp']) {
+      const owned = detachedEffects.filter((e: any) => e.owner === owner);
+      expect(owned.length).toBeGreaterThan(0);
+      expect(owned.every((e: any) => e.amount === 0)).toBe(true);
+    }
+    const other = detachedEffects.filter((e: any) => !['attention', 'mlp'].includes(e.owner));
+    expect(other.length).toBeGreaterThan(0);
+    expect(other.every((e: any) => e.amount === 1)).toBe(true);
+    expect(detachedEffects.every((e: any) => e.opacity === e.originalOpacity)).toBe(true);
+    await expect(page.locator('.playback')).toHaveAttribute('data-guided-focus', 'DETACHED');
     await page.locator('#resume-focus').click();
     await page.clock.runFor(2200);
     await page.screenshot({ path: `artifacts/part4/${theme}-resume.png` });

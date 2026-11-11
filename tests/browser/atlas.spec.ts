@@ -3,6 +3,7 @@ test('overview, nested views, search, inspectable branches, and deterministic ti
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.screenshot({ path: 'artifacts/overview.png' });
   await page.getByRole('button', { name: 'Model', exact: true }).click();
@@ -49,6 +50,7 @@ test('overview, nested views, search, inspectable branches, and deterministic ti
 });
 test('demo, unicode, sampling, settings and safe persistence', async ({ page }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByRole('textbox', { name: 'Your message' }).fill(' 你好 🌏\n ');
   await page.getByRole('button', { name: 'Run demo', exact: true }).click();
@@ -70,6 +72,7 @@ test('demo, unicode, sampling, settings and safe persistence', async ({ page }) 
   await page.getByRole('button', { name: 'Save connection' }).click();
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('fixture-secret');
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByLabel('API key', { exact: false })).toHaveValue('');
   await page.keyboard.press('Escape');
@@ -89,6 +92,7 @@ test('mock live cancellation, clear, subsequent run and bounded history', async 
       .catch(() => {});
   });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByLabel('Base URL', { exact: true }).fill('https://example.test/v1');
   await page.getByLabel('Model identifier', { exact: true }).fill('mock');
@@ -115,6 +119,7 @@ test('mobile, dark, reduced motion and HTML fallback remain navigable', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.screenshot({ path: 'artifacts/mobile.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -137,12 +142,14 @@ test('mobile, dark, reduced motion and HTML fallback remain navigable', async ({
     } as any;
   });
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#fallback')).toBeVisible();
   await page.locator('#fallback-stages button').filter({ hasText: 'GPU accelerator' }).click();
   await expect(page.locator('#inspector-header h2')).toHaveText('GPU accelerator');
 });
 test('tablet sheets leave the scene clear and remain usable across resizing', async ({ page }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   for (const viewport of [
     { width: 820, height: 1180 },
     { width: 900, height: 700 },
@@ -161,7 +168,7 @@ test('tablet sheets leave the scene clear and remain usable across resizing', as
     await expect(page.locator('#inspector-panel')).not.toBeVisible();
     await page.getByRole('button', { name: 'Collapse journey panel' }).click();
     await expect(page.locator('#journey-panel')).not.toBeVisible();
-    await page.locator('.object-label[data-concept="device"]').click();
+    await page.locator('#demo-host .object-label[data-concept="device"]').click();
     await expect(page.locator('#inspector-panel')).toBeVisible();
     await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
     await page.keyboard.press('Escape');
@@ -174,6 +181,7 @@ test('tablet sheets leave the scene clear and remain usable across resizing', as
 
 test('camera orbit, zoom, focus, labels, local route and playback controls', async ({ page }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.locator('#timeline').fill('1');
   const canvas = page.locator('#viewport canvas'),
@@ -207,7 +215,7 @@ test('camera orbit, zoom, focus, labels, local route and playback controls', asy
   await page.getByRole('button', { name: 'Hardware', exact: true }).click();
   await expect(page.locator('#scene-title')).toHaveText('On-device compute');
   await expect(page.locator('#stages')).not.toContainText('Server rack');
-  await expect(page.locator('.object-label[data-concept="rack"]')).toHaveCount(0);
+  await expect(page.locator('#demo-host .object-label[data-concept="rack"]')).toHaveCount(0);
   await page.screenshot({ path: 'artifacts/local-hardware.png' });
   await page.getByLabel('Illustrative compute route', { exact: true }).selectOption('remote');
   await page.getByRole('button', { name: 'Resume focus', exact: true }).click();
@@ -228,6 +236,7 @@ test('every stage in every story is reachable without network side effects', asy
     if (r.method() === 'POST') requests.push(r.url());
   });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   for (const scenario of ['text', 'tools', 'vision', 'diffusion']) {
     await page.getByLabel('Scenario', { exact: true }).selectOption(scenario);
     const max = Number(await page.locator('#timeline').getAttribute('max'));
@@ -255,6 +264,7 @@ test('complete playback visits every stage of all four scenarios and stops at th
     if (request.method() === 'POST') requests.push(request.url());
   });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByLabel('Playback speed', { exact: true }).selectOption('2');
   for (const scenario of ['text', 'tools', 'vision', 'diffusion']) {
     await page.getByLabel('Scenario', { exact: true }).selectOption(scenario);
@@ -305,6 +315,7 @@ test('mock live errors recover and streamed selected-token identity is visible',
     });
   });
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByLabel('Base URL', { exact: true }).fill('https://example.test/v1');
   await page.getByLabel('Model identifier', { exact: true }).fill('mock');

@@ -10,7 +10,7 @@ async function open(page: Page, stream = false) {
     stream,
   );
   await page.goto('/');
-  await expect(page.locator('#viewport canvas')).toBeVisible();
+  await expect(page.locator('#explore-viewport canvas')).toBeVisible();
   await root(page, 'LIVE').click();
   await expect(page.locator('#live-viewport canvas')).toBeVisible();
 }

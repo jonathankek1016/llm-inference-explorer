@@ -6,6 +6,7 @@ test('palettes update the current scene, persist, and preserve playback and neut
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'sage');
   await page.locator('#timeline').fill('3');
@@ -32,6 +33,7 @@ test('palettes update the current scene, persist, and preserve playback and neut
   await page.getByRole('button', { name: 'Close appearance', exact: true }).click();
   expect(await foundation()).toBe('#202228');
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'custom');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Colour palette', exact: true }).click();
@@ -49,6 +51,7 @@ test('in-app picker supports live pointer, keyboard and HEX edits with persisten
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   const dialog = page.locator('#appearance-dialog');
   const open = () => page.getByRole('button', { name: 'Colour palette', exact: true }).click();
   const hex = page.getByRole('textbox', { name: 'Accent hex colour', exact: true });
@@ -110,6 +113,7 @@ test('in-app picker supports live pointer, keyboard and HEX edits with persisten
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'custom');
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await open();
   await expect(hex).toHaveValue('#db7762');
   await page.getByRole('button', { name: 'Close appearance', exact: true }).click();

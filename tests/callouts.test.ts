@@ -4,6 +4,19 @@ import { calloutPresentation, openCallout, placeCallout, relieveCalloutCrowding 
 import { concepts } from '../src/content.ts';
 import { createJourneyControl, transitionJourney, makeTrace } from '../src/core.ts';
 
+test('pristine exploration needs no teaching event or guided ownership', () => {
+  const journey = createJourneyControl();
+  const pins = openCallout(openCallout([], 'device', 'world'), 'router', 'world');
+  const cards = calloutPresentation(journey, undefined, 0, 0, pins);
+  assert.deepEqual(
+    cards.map((card) => card.conceptId),
+    ['device', 'router'],
+  );
+  assert.ok(cards.every((card) => card.role === 'exploratory' && !card.position));
+  assert.equal(journey.active, false);
+  assert.deepEqual(calloutPresentation(journey, undefined, 0, 0, []), []);
+});
+
 test('the guided card is derived only from the active official frame, not exploration', () => {
   const trace = makeTrace('text');
   const inactive = createJourneyControl();

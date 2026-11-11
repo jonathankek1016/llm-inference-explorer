@@ -5,6 +5,7 @@ const root = (page: Page, workspace: string) =>
 async function prepare(page: Page) {
   const module = page.waitForResponse((response) => /\/src\/scene\.ts(?:\?|$)/.test(response.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.clock.install();
   await page.evaluate(

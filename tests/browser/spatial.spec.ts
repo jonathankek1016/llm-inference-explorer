@@ -4,6 +4,7 @@ test('full-window world retains framing and grid preference without changing the
   page,
 }) => {
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   const canvas = page.locator('#viewport canvas');
   await expect(canvas).toBeVisible();
   const layout = () =>
@@ -36,12 +37,13 @@ test('full-window world retains framing and grid preference without changing the
   // Guided framing can put the laptop beneath the Journey panel. Expose the
   // actual mesh before raycasting; collapsing the panel must not move it.
   await page.locator('#collapse-journey').click();
-  const device = (await page.locator('.object-label[data-concept="device"]').boundingBox())!;
+  const device = (await page.locator('#demo-host .object-label[data-concept="device"]').boundingBox())!;
   // Hit the laptop mesh below its label, exercising the full-canvas raycast.
   await page.mouse.click(device.x + device.width / 2, device.y + device.height + 35);
   await expect(page.locator('#inspector-header h2')).toHaveText('Your device');
   // Settings is the sole home for this preference; no provider configuration needed.
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Show ground grid', { exact: true })).not.toBeChecked();
   await page.getByLabel('Show ground grid', { exact: true }).check();

@@ -271,6 +271,7 @@ export class LiveWorkspace {
   }
   private start() {
     if (!this.lesson.stages.length || !this.ports.admit(this.owner, true)) return;
+    this.hold.clear();
     this.lesson.restart();
     this.last = performance.now();
     this.render();
@@ -642,7 +643,13 @@ export class LiveWorkspace {
       });
       observationBody.dataset.revision = observationKey;
     }
-    this.$('receipt-body').innerHTML = this.request
+    const receiptBody = this.$('receipt-body');
+    const openReceipts = new Set(
+      [...receiptBody.querySelectorAll<HTMLDetailsElement>('details[open]')].map(
+        (detail) => detail.dataset.event,
+      ),
+    );
+    const receiptMarkup = this.request
       ? `<p class="small">${esc(this.request.id)}</p><p class="small">${this.request.events
           .filter((e) => e.kind === 'request-state')
           .map((e) => (e.evidence.kind !== 'UNKNOWN' ? esc(e.evidence.value) : ''))
@@ -658,9 +665,20 @@ export class LiveWorkspace {
               'logprobs',
             ].includes(e.kind),
           )
-          .map((e) => `<details><summary>${esc(e.kind)}</summary>${evidenceMarkup(e.evidence)}</details>`)
+          .map(
+            (e) =>
+              `<details data-event="${esc(e.id)}"><summary>${esc(e.kind)}</summary>${evidenceMarkup(e.evidence)}</details>`,
+          )
           .join('')}`
       : '<p>No runtime evidence yet.</p>';
+    // Event IDs include request identity: preserve only disclosures from this receipt.
+    if (receiptBody.dataset.revision !== receiptMarkup) {
+      receiptBody.innerHTML = receiptMarkup;
+      receiptBody.querySelectorAll<HTMLDetailsElement>('details').forEach((detail) => {
+        detail.open = openReceipts.has(detail.dataset.event);
+      });
+      receiptBody.dataset.revision = receiptMarkup;
+    }
     this.$('playback').hidden = !stages.length;
     Object.assign(this.$('playback').dataset, {
       journeyActive: String(j.active),
@@ -709,9 +727,7 @@ export class LiveWorkspace {
       this.scene.setPresentationSuspended(journeySuspended(j));
       this.scene.setTeachingFlow(journeyFlowActive(j), journeyFlowSuspended(j));
       this.scene.setGuidedEmphasis(j.active);
-      const cards = event
-        ? calloutPresentation(j, event, this.lesson.position, stages.length, this.pins)
-        : [];
+      const cards = calloutPresentation(j, event, this.lesson.position, stages.length, this.pins);
       const guided = cards.find((c) => c.role === 'guided');
       if (guided && this.lesson.current) {
         guided.title = this.lesson.current.title;

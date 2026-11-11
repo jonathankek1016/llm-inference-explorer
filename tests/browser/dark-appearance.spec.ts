@@ -4,7 +4,8 @@ test('dark appearance autosaves, survives dismissal and reload, and never change
   page,
 }) => {
   await page.goto('/');
-  await page.locator('.object-label').first().waitFor();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
+  await page.locator('#demo-host .object-label').first().waitFor();
   await page.evaluate(() => document.fonts.ready);
   const open = () => page.getByRole('button', { name: 'Settings', exact: true }).click();
   const close = () => page.getByRole('button', { name: 'Close settings', exact: true }).click();
@@ -22,7 +23,7 @@ test('dark appearance autosaves, survives dismissal and reload, and never change
   const surfaces = () =>
     page
       .locator(
-        '#app, .masthead, .scene-intro, .panel, .stage, .object-label, .viewport-toolbar, #scene-switcher, .play-button, .scenario-control, .search-trigger',
+        '#app, .masthead, #demo-host :is(.scene-intro, .panel, .stage, .object-label, .viewport-toolbar, .play-button), #scene-switcher, .scenario-control, .search-trigger',
       )
       .evaluateAll((nodes) =>
         nodes.map((node) => {
@@ -64,7 +65,8 @@ test('dark appearance autosaves, survives dismissal and reload, and never change
   await page.mouse.click(2, 2);
   await expect(page.locator('#settings-dialog')).toBeHidden();
   await page.reload();
-  await page.locator('.object-label').first().waitFor();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
+  await page.locator('#demo-host .object-label').first().waitFor();
   expect(await canvasColour()).toBe('#101217');
   await open();
   await expect(depth).toHaveValue('100');
@@ -84,6 +86,7 @@ test('dark appearance autosaves, survives dismissal and reload, and never change
   await expect(depth).toHaveValue('100');
   await close();
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await open();
   await expect(depth).toBeDisabled();
   await expect(depth).toHaveValue('100');

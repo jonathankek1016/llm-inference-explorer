@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function prepare(page: Page) {
   const sceneResponse = page.waitForResponse((response) => /\/src\/scene\.ts(?:\?|$)/.test(response.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const modulePath = (await sceneResponse).url();
   await page.clock.install();
@@ -173,12 +174,19 @@ for (const blocker of ['detached', 'paused'] as const) {
     } else await page.getByRole('button', { name: 'Pause journey', exact: true }).click();
     await page.clock.runFor(400);
     const before = await read(page);
+    const view = ({ packet, packetElapsed, ...rest }: any) => rest;
     await open(page);
+    const frozen = await read(page);
+    expect(view(frozen)).toEqual(view(before));
     await page.clock.fastForward(30000);
-    expect(await read(page)).toEqual(before);
+    expect(await read(page)).toEqual(frozen);
     await page.keyboard.press('Escape');
     await page.clock.runFor(3000);
-    expect(await read(page)).toEqual(before);
+    const resumed = await read(page);
+    expect(view(resumed)).toEqual(view(frozen));
+    expect(resumed.packetElapsed).toBeGreaterThan(frozen.packetElapsed);
+    expect(resumed.packet).not.toEqual(frozen.packet);
+    expect(resumed.packetVisible).toBe(true);
     await expect(page.locator('#timeline')).toHaveValue('0');
     await expect(page.getByLabel('Journey mode', { exact: true })).toHaveValue('AUTO');
     await expect(page.locator('.playback')).toHaveAttribute(

@@ -7,6 +7,7 @@ const concept = (page: Page, id: string) => page.locator(`.explore-contents [dat
 async function prepare(page: Page) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const path = (await response).url();
   await page.clock.install();
@@ -139,6 +140,7 @@ for (const width of [1440, 820, 390])
   test(`Explore reference is usable at ${width}px in light and dark`, async ({ page }) => {
     await page.setViewportSize({ width, height: 960 });
     await page.goto('/');
+    await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
     await expect(page.locator('#viewport canvas')).toBeVisible();
     await root(page, 'EXPLORE').click();
     for (const theme of ['light', 'dark']) {

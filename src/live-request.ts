@@ -1,3 +1,4 @@
+import { safeRequestError } from './request-errors.ts';
 import type { ProviderObservation } from './live-observations.ts';
 import type { LiveRequestType } from './live-input.ts';
 import { validateImage, imageMetadata } from './live-media.ts';
@@ -432,14 +433,7 @@ export class LiveRequests {
       this.finish(record, 'COMPLETED');
     } catch (error) {
       if (!this.accepts(record)) return;
-      const message = error instanceof Error ? error.message : 'Request failed';
-      const cleaned = message.replace(/data:image\/[^\s"']+/g, '[image payload omitted]');
-      const privateSafe = input.image?.dataUrl.includes(',')
-        ? cleaned.split(input.image.dataUrl.split(',')[1]).join('[image payload omitted]')
-        : cleaned;
-      const safe = (
-        input.config.key ? privateSafe.split(input.config.key).join('[redacted]') : privateSafe
-      ).slice(0, 2000);
+      const safe = safeRequestError(error, input.config.key, input.image?.dataUrl);
       record.error = observed(
         safe,
         'APPLICATION',

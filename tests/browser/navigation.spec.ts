@@ -3,6 +3,7 @@
 async function prepare(page: Page, mode = 'MANUAL', start = true) {
   const response = page.waitForResponse((r) => /\/src\/scene\.ts(?:\?|$)/.test(r.url()));
   await page.goto('/');
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   const path = (await response).url();
   await page.clock.install();
@@ -79,7 +80,9 @@ for (const started of [false, true])
     await expect(page.locator('#learn-tab')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#inspector-body details')).toHaveAttribute('open', '');
     expect(await page.locator('#inspector-body').evaluate((element) => element.scrollTop)).toBe(scroll);
-    await expect(page.locator('.world-callout[data-role="exploratory"][data-subject="gpu"]')).toHaveCount(1);
+    await expect(
+      page.locator('#demo-host .world-callout[data-role="exploratory"][data-subject="gpu"]'),
+    ).toHaveCount(1);
     if (started) {
       await attachment(page, 'DETACHED');
       await stage(page, 0);
@@ -111,7 +114,7 @@ async function search(page: Page, query: string, concept: string) {
   await page.locator(`[data-search-concept="${concept}"]`).click();
 }
 async function object(page: Page, concept: string) {
-  await page.locator(`.object-label[data-concept="${concept}"]`).focus();
+  await page.locator(`#demo-host .object-label[data-concept="${concept}"]`).focus();
   await page.keyboard.press('Enter');
 }
 
@@ -157,7 +160,7 @@ test('row overrides preserve view across scenes and Resume resolves the new offi
   await attachment(page, 'DETACHED');
   await stage(page, 7);
   expect(await camera(page)).toEqual(before);
-  await expect(page.locator('.world-callout[data-role="guided"]')).toBeHidden();
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toBeHidden();
   await page.locator('#resume-focus').click();
   await settle(page);
   expect((await camera(page)).scene).toBe('model');
@@ -179,6 +182,7 @@ test('policy preferences persist without starting inactive guidance or requiring
   await page.clock.runFor(10000);
   await stage(page, 0);
   await page.reload();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await expect(page.locator('#viewport canvas')).toBeVisible();
   await page.locator('#settings-open').click();
   await expect(page.getByLabel('Earlier-stage jumps')).toHaveValue('guided');
@@ -199,7 +203,7 @@ for (const mode of ['MANUAL', 'AUTO'])
     await advancing(page, false);
     await object(page, 'attention');
     await expect(
-      page.locator('.world-callout[data-role="exploratory"][data-subject="attention"]'),
+      page.locator('#demo-host .world-callout[data-role="exploratory"][data-subject="attention"]'),
     ).toBeVisible();
     await page.locator('#scene-switcher [data-scene="compute"]').click();
     await object(page, 'gpu');
@@ -213,14 +217,14 @@ for (const mode of ['MANUAL', 'AUTO'])
     expect((await camera(page)).scene).toBe('world');
     expect((await focus(page))[0]).toBe('device');
     await advancing(page, false);
-    await expect(page.locator('.world-callout[data-role="guided"]')).toContainText('1 / 18');
+    await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toContainText('1 / 18');
     if (mode === 'AUTO') {
       await page.locator('#play').click();
       await advancing(page, true);
     }
     await page.locator('#scene-switcher [data-scene="block"]').click();
     await expect(
-      page.locator('.world-callout[data-role="exploratory"][data-subject="attention"]'),
+      page.locator('#demo-host .world-callout[data-role="exploratory"][data-subject="attention"]'),
     ).toBeVisible();
     await expect(page.locator('#journey-mode')).toHaveValue(mode);
   });
@@ -326,9 +330,9 @@ test('Stop, same-stage restart and scenario replacement clear stale guidance/rea
   await advancing(page, false);
   await stage(page, 0);
   expect((await focus(page)).slice(0, 2)).toEqual(['device', true]);
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(1);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(1);
   await page.locator('#stop-tour').click();
-  await expect(page.locator('.world-callout[data-role="guided"]')).toHaveCount(0);
+  await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toHaveCount(0);
   await expect(page.locator('#resume-focus')).toBeHidden();
   await page.locator('#journey-mode').selectOption('MANUAL');
   await page.locator('#start-tour').click();
@@ -356,7 +360,7 @@ for (const theme of ['light', 'dark'])
     await page.locator('#resume-focus').click();
     await settle(page);
     await page.screenshot({ path: `artifacts/part6/${theme}-resumed.png` });
-    await expect(page.locator('.world-callout[data-role="guided"]')).toContainText('4 / 18');
+    await expect(page.locator('#demo-host .world-callout[data-role="guided"]')).toContainText('4 / 18');
     await attachment(page, 'TRACKING');
   });
 

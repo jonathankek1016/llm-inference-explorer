@@ -1,3 +1,4 @@
+import { safeRequestError } from './request-errors.ts';
 import type { LiveConfiguration, LiveMediaConfiguration } from './live-input.ts';
 import './style.css';
 import { shell } from './shell.ts';
@@ -82,7 +83,7 @@ const state = {
   dark: read<string>('atlas-theme', 'light') === 'dark',
 };
 let journey = createJourneyControl();
-let workspace: WorkspaceId = demoCompatibilityHost.workspace;
+let workspace: WorkspaceId = 'EXPLORE';
 const sessions = new GuidedSessions();
 const demoOwner: SessionOwner = {
   workspace: 'DEMO',
@@ -963,8 +964,9 @@ async function send() {
   const start = performance.now();
   receipt = 'Request sent from this browser';
   receiptEvents.push({ time: Date.now(), event: receipt });
+  const requestConfig = { ...config };
   try {
-    const result = await requestText(config, messages, run.signal, (text, event) => {
+    const result = await requestText(requestConfig, messages, run.signal, (text, event) => {
       if (!gate.current(run.id)) return;
       output.content = text;
       receipt = `${event} · ${(performance.now() - start).toFixed(0)} ms since send (client)`;
@@ -980,7 +982,7 @@ async function send() {
   } catch (error) {
     if (!gate.finish(run.id, 'error')) return;
     output.state = 'error';
-    $('request-status').textContent = `Error: ${error instanceof Error ? error.message : 'Request failed'}`;
+    $('request-status').textContent = `Error: ${safeRequestError(error, requestConfig.key)}`;
     receipt = `Request failed after ${(performance.now() - start).toFixed(0)} ms (client)`;
     renderChat();
   } finally {
@@ -1511,6 +1513,7 @@ darkControl.addEventListener('input', () => {
 applyAppearance();
 chooseScenario('text');
 renderChat();
+switchWorkspace(workspace);
 requestAnimationFrame(tick);
 $('theme').setAttribute('aria-label', state.dark ? 'Toggle light theme' : 'Toggle dark theme');
 // Keep the viewport clear of a resized panel, without carrying desktop widths into mobile.
