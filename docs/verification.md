@@ -1,6 +1,6 @@
-# V4 release-candidate verification
+# V4.0.0 release verification
 
-This guide describes the implemented V4 candidate on `v4`. Package version remains **3.1.0** until a separately authorized release-version change. The repository source is authoritative for behavior. The V4 architecture specification v2 and addenda v2.1/v2.2 describe the destination and inherited ownership/lifecycle rules; V3.1 implementation references describe the preserved journey mechanics.
+This guide describes the V4.0.0 release preparation on `v4`. Package version is **4.0.0**; promotion to `main`, tagging and publication require separate authorization. The repository source is authoritative for behavior. The V4 architecture specification v2 and addenda v2.1/v2.2 describe the destination and inherited ownership/lifecycle rules; V3.1 implementation references describe the preserved journey mechanics. See the [release notes](release-notes-v4.0.0.md) for the release scope.
 
 ## Reproduce
 
@@ -101,6 +101,23 @@ Validated the uncommitted remediation on `v4`, based on `a9b969d83c2fa9b39d03b5b
 The complete browser run is recorded in `artifacts/remediation-e2e.log`. Its PowerShell wrapper returned exit 1 because redirected Node colour-environment warnings were classified as `NativeCommandError`; Playwright reported all 179 tests passed and recorded `status: passed` with no failed tests. A separate harmless diagnostic reproduced this shell behavior with a native process exit of 0. This is an execution-wrapper caveat, not a suppressed test failure.
 
 Representative generated Explore desktop and Demo light/dark tablet/mobile screenshots, including the dark mobile appearance dialog, were visually inspected. This does not substitute for the manual/device/provider coverage below.
+
+## V4.0.0 release-preparation validation — 13 November 2026
+
+Validated version **4.0.0** on `v4`, based on reviewed remediation commit `48074f55e6e412fdfe60f2cc06ebb2da8a4d82cc`. Release preparation changes only package version metadata and documentation; application code, tests, verification scripts and dependency versions are unchanged.
+
+| Check                                      | Result                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| TypeScript and production build            | PASS; 50 modules; existing scene-chunk size warning only           |
+| Unit/module integration tests              | PASS; 116 passed, 0 failed, 0 skipped                              |
+| Complete Playwright suite                  | PASS; 179 passed in 19.1 minutes; native npm/Playwright exit **0** |
+| Formatting and whitespace                  | PASS; Prettier and `git diff --check`                              |
+| Full and production-only dependency audits | PASS; zero vulnerabilities in both                                 |
+| Registry signature/provenance verification | PASS; 31 verified signatures and 14 verified attestations          |
+
+The browser output is in ignored `artifacts/release-e2e.log`. The native exit code was captured immediately from `$LASTEXITCODE`, saved separately in `artifacts/release-e2e-native-exit.txt`, and explicitly returned by the PowerShell wrapper. Both are **0**, independently of the redirected Node colour warning. Playwright also recorded `status: passed` with no failed tests. This resolves the earlier exit-code uncertainty for the complete suite.
+
+The three standalone production/visual/palette scripts passed during the preceding remediation, as recorded above; they were not rerun during this metadata/documentation-only release preparation. No real-provider requests were used. The recommendation is **GO for separately authorized main-branch promotion**, subject to the manual coverage limits below. No merge, tag, release or deployment is part of this validation.
 
 ## Dependencies and limits
 

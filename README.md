@@ -4,7 +4,7 @@
 
 V4 separates three workspaces: **Explore**, the canonical concept atlas and default entry; **Demo Lab**, deterministic authored lessons; and **Live Lab**, real browser-to-provider requests with an independent educational journey. Explore and Demo need no API key. The 3D models remain educational illustrations even when a real request runs.
 
-The V4 release candidate retains package version **3.1.0** until release-version approval. This describes the implemented V4 behavior, not a published V4.0.0 release.
+Package version **4.0.0** is prepared on `v4` for release. See the [V4.0.0 release notes](docs/release-notes-v4.0.0.md) for changes and boundaries. Main-branch promotion, tagging and publication remain separate release steps.
 
 ## Run locally
 
