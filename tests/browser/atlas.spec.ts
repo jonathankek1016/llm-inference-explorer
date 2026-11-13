@@ -226,9 +226,14 @@ test('camera orbit, zoom, focus, labels, local route and playback controls', asy
   await expect(page.getByRole('button', { name: 'Play journey', exact: true })).toBeVisible({
     timeout: 4000,
   });
-  await page.getByRole('button', { name: 'Replay journey', exact: true }).click();
+  await expect(page.locator('#guidance-status')).toHaveText('Journey complete');
+  await expect(page.locator('#play')).toBeDisabled();
+  await page.getByRole('button', { name: 'Replay from start', exact: true }).click();
   await expect(page.locator('#current-stage')).toHaveText('Your device');
+  await expect(page.locator('#timeline')).toHaveValue('0');
+  await expect(page.locator('#demo-host .playback')).toHaveAttribute('data-advancing', 'true');
   await page.getByRole('button', { name: 'Pause journey', exact: true }).click();
+  await expect(page.locator('#demo-host .playback')).toHaveAttribute('data-advancing', 'false');
 });
 test('every stage in every story is reachable without network side effects', async ({ page }) => {
   const requests: string[] = [];

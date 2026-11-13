@@ -2,11 +2,13 @@
 
 **What happens after I press Enter?** Explore the answer in an interactive 3D atlas, from your device and network to server hardware, model computation and the response coming home.
 
-The light-first interface uses floating HTML panels around procedural Three.js scenes. A working demo opens immediately, with no API key. An optional personal BYOK connection supplies real text responses; the atlas remains an educational illustration.
+V4 separates three workspaces: **Explore**, the canonical concept atlas and default entry; **Demo Lab**, deterministic authored lessons; and **Live Lab**, real browser-to-provider requests with an independent educational journey. Explore and Demo need no API key. The 3D models remain educational illustrations even when a real request runs.
+
+The V4 release candidate retains package version **3.1.0** until release-version approval. This describes the implemented V4 behavior, not a published V4.0.0 release.
 
 ## Run locally
 
-Use Node.js **22.18+** (or a newer supported release) and npm. The implementation was verified with Node 26.3.0 on Windows and Microsoft Edge.
+Use Node.js **22.18+** (or a newer supported release) and npm. Validation uses Node 26.3.0 on Windows and Microsoft Edge.
 
 ```sh
 npm ci
@@ -16,87 +18,95 @@ npm run dev
 Open **http://127.0.0.1:5173**. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
 
 ```sh
-npm run build       # TypeScript check and production bundle in dist/
-npm run preview     # Preview the production bundle, normally port 4173
-npm test            # Deterministic state, Unicode and provider tests
-npm run test:e2e    # Browser interaction and controlled mock API tests
-npm run verify:preview # Screenshots and runtime audit; requires the preview on port 4173
+npm run build           # TypeScript check and production bundle in dist/
+npm run preview         # Local production preview, normally port 4173
+npm test                # Unit/module integration tests
+npm run test:e2e        # Complete browser suite, with intercepted provider responses
+npm run format:check
+npm run verify:preview  # Requires the production preview on port 4173
+npm run verify:visual   # Requires the same preview
+npm run verify:palettes # Requires the same preview
+npm audit
+npm audit --omit=dev
 ```
 
-Browser tests use installed Microsoft Edge on Windows. On other platforms, run `npx playwright install chromium` once. The browser suite starts Vite if needed. Screenshots are written to the ignored `artifacts/` directory. No test makes a paid model request.
+Browser tests use installed Microsoft Edge on Windows. On other platforms, run `npx playwright install chromium` once. The browser suite starts Vite if needed. Screenshots and reports are written to ignored `artifacts/` and `test-results/` directories. Tests use mocks/intercepts, not paid model requests. ESLint is not configured; formatting is checked with Prettier.
 
-## Explore the atlas
+## Three workspaces
 
-| View                | What you can inspect                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Request journey     | Laptop, Wi-Fi/router, representative backbone and data centre, outbound request and return path                                                               |
-| Hardware            | Service ingress, rack, accelerator board and model weights; an alternate on-device route                                                                      |
-| Model               | Context preparation, toy token IDs, embeddings and position, prompt prefill, repeated transformer blocks, per-layer KV cache, projection, sampling and decode |
-| Transformer block   | Two normalisations, attention, MLP and two residual additions, with an explode control and a synthetic causal matrix                                          |
-| Tools & MCP         | Simulated tool-call intent, application host, client/server communication, calculator result and another model step                                           |
-| Understand an image | A bundled landscape, visual patches/encoder and connection to language context                                                                                |
-| Generate an image   | Representative text conditioning, seeded noise, illustrative refinement and image decoding                                                                    |
+| Workspace | Purpose and navigation                                                                                                                                                                                                                                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explore   | Starts at the concept atlas. Browse categories, subcategories and concepts; search opens canonical reference. Independent category exhibits share concept IDs without implying a process sequence. The Inspector opens for concepts and contains reference material, sources, connected concepts and generated **Used in Demo** links. |
+| Demo Lab  | Select an authored text, tool, image-understanding or image-generation scenario. Journey/Chat, cloud/on-device routes and Overview/Hardware/Model/Block views retain their teaching behavior. The contextual Inspector explains the selected lesson location and offers **Explore this concept**.                                      |
+| Live Lab  | Configure a connection, submit text or an enabled image request, and inspect returned results/evidence. The dynamic educational journey is separate from request execution. A real request does not turn the illustrative atlas into provider telemetry.                                                                               |
 
-Choose a scenario at the top. Use **Journey** to navigate the stages or **Chat** to run a sample. The inspector offers **Learn**, **Data**, and **Sources**, with deeper explanations and links between concepts.
+Explore covers Request & application, Network & transport, Serving infrastructure, Model inference, Tools & orchestration, Vision / multimodal understanding and Image generation. Retrieval and Web / search remain truthful, unpopulated taxonomy areas. Demo usages are derived from authored scenario/stage definitions; runtime observations do not fabricate permanent Live usage entries.
 
-- Drag the scene to orbit, scroll/pinch to zoom, and right-drag to pan.
-- Click a model object or its label to inspect it. **Inspect inference** and **Inspect this block** enter nested views. Breadcrumbs and the scale controls return to broader views.
-- Search with the search button or `/`. Try `KV cache`, `attention`, `GPU`, `MLP`, or `MCP`.
-- Use the **Colour palette** button beside the theme toggle to choose Original Sage, Powder Blue, Soft Lavender, Dusty Rose, Warm Apricot, Monochrome or a custom accent. The palette persists across reloads and works in both modes; dark surfaces stay neutral. Custom text and surface shades adapt for contrast.
-- Open **Settings → Display** to show or hide the faint ground grid. This preference saves immediately, independently of model connection settings. The 3D environment spans the window beneath the floating frosted interface.
-- Play/pause, previous/next, seek, speed, and replay affect teaching playback only. With the page focused, Space toggles playback and the arrow keys step through it.
-- Manual camera interaction turns off **Follow journey**. Re-enable it to restore guided framing. Camera controls reset, fit, focus and toggle labels.
-- Collapse panels when you want more open space. The desktop journey panel can be resized at its lower-right corner. Tablet and mobile use dismissible sheets; Escape closes overlays.
-- Tab reaches controls; arrow keys switch tabs. The system reduced-motion preference suppresses decorative travel animation. A rendering failure retains the HTML journey and inspector.
+Drag to orbit, scroll/pinch to zoom, and right-drag to pan. Select objects or labels for concise exploratory callouts; use the Inspector for deeper content. Explore, Demo and Live retain local presentation state rather than sharing camera poses or guided cards. Search is available through the header or `/` where applicable. Panels collapse or become sheets on narrow screens; Escape closes overlays.
 
-## Demo and live behaviour
+Theme, palette, grid and display preferences save automatically. Six preset palettes and a custom accent work in light and dark themes. Controls support keyboard access; reduced motion suppresses teaching-particle animation. The Demo HTML journey and Inspector remain usable if WebGL fails.
 
-**Demo** returns the selected scenario's labelled sample response, even if you type a different question. It is a repeatable teaching fixture, not an in-browser language model. The tool and image scenarios do not connect to external services or accounts.
+## Guided sessions and requests
 
-For **Live API**, open Settings and use **Model connection** to enter a Chat Completions compatible base URL and a model identifier, then supply your own key if required. Streaming and logprobs are separately configurable. The browser calls `/chat/completions` directly; the provider must allow browser requests through its CORS policy. Native provider APIs with different schemas need an adapter. Changing the illustrative cloud/local route does **not** change your configured API endpoint.
+Only **one incomplete Demo/Live Guided Session** owns the global slot. Browsing another workspace parks/detaches it while preserving official stage, mode, playback intent and elapsed teaching time. Returning through a workspace tab does not reattach; **Resume focus** or global **Return to active session** restores guidance. Settings, Appearance and Reading Hold affect educational presentation, not backend execution.
 
-There is one answer request per send, with no narration request and no silent retry for unsupported capabilities. Missing logprobs leave a usable text response and an explicit “not available.” Provider-returned candidate probabilities are not renormalised, and the selected token stays identified even when another candidate has higher probability.
+- **Start journey** and **Replay from start** use guided-session admission.
+- **Manual/Auto** choose educational advancement, not provider execution speed.
+- **Stop journey / End current** ends incomplete education without cancelling a request.
+- Natural Auto completion or Manual **Complete journey** releases the global slot and retains the local Completed presentation.
+- **Replay from start** begins a new educational traversal; Live Replay does not resend the request.
+- **Explore freely** leaves the retained Completed presentation for neutral local exploration. It does not navigate to the Explore root.
+- **Cancel request** belongs to request execution and does not implicitly Stop the lesson.
 
-Live context contains the current prompt and up to four complete earlier live exchanges, bounded by 12,000 user/assistant content characters. The prompt field accepts up to 6,000 UTF-16 code units. The fixed system instruction and provider chat-template overhead are additional; this character limit is not a tokenizer-based context limit. Demo, legacy-restored, cancelled and errored exchanges are excluded. **Context & received data** shows the policy, client receipt events, optional usage and available candidates.
+Live has its own one-in-flight request policy. A second request is rejected while one is running; cancellation fences stale callbacks. A request may finish while the learner browses Explore, after its lesson completes, or while Demo owns the guided slot. Its result remains Live-owned. Local cancellation cannot guarantee remote computation or billing stops.
 
-**Stop request** aborts local receipt where possible and preserves partial text. Clear chat cancels active work. Generation IDs prevent stale completions from changing a newer run. Pausing the atlas does not stop a remote request; local cancellation cannot guarantee that the provider stopped computation or billing.
+## Model connection and capabilities
 
-Keys remain in the current tab's memory and disappear on reload. The old prototype's `ai-key` entry is removed rather than silently migrated. Theme, non-secret endpoint settings and conversation history are saved locally. Legacy conversation text is restored for display, labelled as excluded from sent context. Clear chat removes the current saved conversation.
+Open **Settings > Model connection** to enter a compatible base URL, model and optional API key. Requests go directly from the browser; the backend must permit CORS and support the selected wire format. Other provider schemas need an adapter. There is no automatic capability discovery or inference from provider branding or prompt keywords.
+
+| Request family      | Configuration and transport                                                                                                                                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Text                | Chat Completions-compatible `/chat/completions`; optional SSE, usage, finish reason and logprobs where returned.                                                                                                                             |
+| Image understanding | Actual PNG/JPEG/WebP input, with optional text, sent as multimodal Chat Completions content. Requires matching image+text support declarations; requested image streaming/logprobs also require support.                                     |
+| Image generation    | `/images/generations` with one image. Requires an image-generation model identifier plus declared generation and generated-media return support. Returned URL/base64 media is validated. No intermediate image-progress stream is simulated. |
+
+The expandable **Live image capability declarations** section contains user assertions based on backend documentation, not measured telemetry. Unknown and Unsupported image modes remain disabled. Connection/model identity changes invalidate declarations. The Live capability rows explain missing requirements and link to the existing configuration flow. Unsupported requests are not silently retried or downgraded.
+
+Structured provider tool-call objects and citations are displayed as observations. **No tool/MCP execution, tool continuation, RAG execution or web-search execution is implemented.** A citation does not prove search ran; a tool-call object does not prove execution occurred.
+
+Keys stay in this tab's memory, are excluded from stored preferences, and disappear on reload. Errors redact the credential belonging to the failed request. Live inputs/results/media stay in memory; a new request replaces the displayed media result. Non-secret connection settings and appearance preferences persist locally.
+
+Demo retains its legacy **Request source: Scripted demo / Live API** control. It is not the root Demo/Live selector. Scripted responses are authored fixtures. The legacy Live API path preserves bounded conversation context, local chat history, streaming and cancellation; only complete eligible exchanges enter its bounded context. Clearing that chat removes its saved history. Changing the illustrative compute route does not change the configured endpoint.
 
 ## Evidence and boundaries
 
-- **Observed:** locally captured user input, actual returned text, optional usage/logprobs, and client-measured receipt times.
-- **Illustrative:** infrastructure placement, model diagrams, toy IDs, synthetic probabilities and attention, cache counts, tool traces and image fixtures.
-- **Playback:** deliberate timing, camera transitions and animated travel. This is not provider latency, throughput or packet telemetry.
+Evidence carries explicit provenance: **Observed**, **Locally calculated**, **Illustrative**, **Inferred/Representative**, or **Unknown**. Returned text/usage/logprobs are observations only when actually supplied. App-side elapsed timing and calculations are not provider telemetry. Missing evidence stays unknown.
 
-The tokenizer is explicitly a deterministic **UTF-8 byte toy**, with IDs 0–255. It preserves valid Unicode and whitespace and is not BPE, provider tokenisation or a billing estimate. The sampling experiment uses stable softmax, an explicit zero-temperature greedy case and a seed; it cannot alter an answer already received.
-
-The block order follows a representative pre-normalised decoder layout informed by LLaMA. Six visible model blocks are a drawing choice, not a model specification. Inference does not update trained weights. Context and KV caches are not permanent conversational memory, databases or stores of finished answers. Nothing exposes hidden chain-of-thought, proprietary activations, real cache contents or hardware utilisation.
-
-Image understanding uses a representative encoder/connector path. Image generation is a latent-diffusion-style illustration using locally authored art and seeded noise; its frames are not genuine intermediate model states. Other architectures differ.
+The toy tokenizer uses deterministic UTF-8 byte IDs, not provider tokenisation or a billing estimate. Sampling and attention experiments are authored educational representations. The representative pre-normalised decoder, six visible blocks, cache geometry, network route, GPU and teaching particles do not expose actual provider internals, tensors, cache contents, hidden reasoning or hardware allocation. Real image input/output does not validate a particular hidden model architecture.
 
 ## Implementation
 
-Vite + TypeScript + direct Three.js keep the original small browser-app footprint without adding a framework or backend.
+Vite + TypeScript + direct Three.js, without an application backend or UI framework.
 
-| Module                                          | Responsibility                                                                                            |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `src/content.ts`                                | Concept registry, sources, scene hierarchy, typed relationships and scenario fixtures                     |
-| `src/core.ts`                                   | Deterministic traces/playhead state, toy encoding, seeded sampling, cancellation gate and bounded context |
-| `src/provider.ts`                               | Chat Completions JSON/SSE parsing, Unicode-safe stream assembly and selected-token identity               |
-| `src/scene.ts`                                  | Procedural geometry, labels, picking, camera controls, resource disposal and fixture image drawing        |
-| `src/main.ts`                                   | UI state, navigation, playback and request lifecycle                                                      |
-| `src/shell.ts`, `src/style.css`, `src/icons.ts` | Accessible HTML panels, responsive themes and interface icons                                             |
+| Modules                                                                                         | Responsibility                                                                                   |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `content.ts`, `concept-registry.ts`, `usage-graph.ts`, `content-overlays.ts`                    | Shared concept identities/facts, canonical reference, generated usages and contextual overlays   |
+| `workspace.ts`, `main.ts`, `guided-session.ts`                                                  | Explicit destinations, root coordination and one incomplete educational reservation              |
+| `core.ts`, `navigation.ts`, `reading-hold.ts`                                                   | Inherited local journey, navigation and reading semantics                                        |
+| `explore.ts`, `explore-catalogue.ts`, `explore-scene.ts`, `workspace-state.ts`                  | Category navigation, independent exhibit placement and Explore presentation memory               |
+| `scene.ts`, `scene-loop.ts`, `callouts.ts`, `callout-layer.ts`, `emphasis.ts`                   | Retained workspace visuals, shared frame scheduling, local callouts/emphasis and camera behavior |
+| `live-workspace.ts`, `live-journey.ts`                                                          | Live UI and incremental educational traversal                                                    |
+| `live-request.ts`, `live-events.ts`, `live-trace.ts`, `provenance.ts`                           | Independent request/run identity, lifecycle, evidence and stable trace construction              |
+| `provider.ts`, `live-capabilities.ts`, `live-input.ts`, `live-media.ts`, `live-observations.ts` | Transport, scoped capability declarations, media validation and structured observations          |
+| `shell.ts`, `style.css`, `icons.ts`                                                             | Responsive, accessible shell and controls                                                        |
 
-The renderer is loaded separately from the HTML interface. Pixel ratio is capped at 1.6. Geometry and materials are reused; scene resources are disposed on replacement. Static scenes render on demand, and hidden pages suspend animation work. Hardware performance varies; the tests do not establish a universal frame rate.
+All module paths above are under `src/`. Retained workspace renderers share one frame scheduler; hidden renderers do not draw. Scene resources are disposed on replacement. Static rendering is demand-driven; pixel ratio is capped at 1.6. This is not a universal performance guarantee.
 
 ## Verification and remaining limits
 
-The test suite covers deterministic seeking, Unicode/whitespace, stable sampling, selected-token identity, cancellation/stale runs, bounded context, JSON/SSE parsing (including split multibyte input), unsupported capabilities, partial stream errors, all scenario stages, navigation, camera interaction, live error recovery with mocks, persistence, mobile sheets and renderer fallback.
+The current suite contains **116 unit/module integration tests and 179 browser tests**. It covers workspace/session isolation, concept navigation, cameras/callouts, completion and recovery, request independence, capabilities, JSON/SSE parsing, images, tool/citation observations, provenance, redaction, responsive UI and audit-fix regressions. See [the verification guide](docs/verification.md) for commands, scope, results and limitations.
 
-Visual checks include overview, model, block, all optional branches, cloud/local hardware, light/dark themes, desktop, 1280×720 laptop, tablet and mobile layouts down to 360×640. See [the verification guide](docs/verification.md) for the checked workflows and runtime limits.
-
-Live behaviour is verified with controlled mocks, not paid credentials or a compatibility claim for every provider. There is no real MCP connection, browser-hosted LLM, image inference endpoint or hardware telemetry. Training, distributed execution details, audio/video, expert routing and real tokenizer integration remain future extensions.
+Live integration is validated with controlled responses, not paid credentials or a compatibility claim for every provider. Physical mobile devices, Firefox/WebKit, screen readers, deployment security configuration and universal performance require separate validation. Audio/video, real MCP/RAG/search execution and a teaching-content/model overhaul are outside this V4 scope.
 
 ## Why I built this
 

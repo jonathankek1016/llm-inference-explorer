@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
@@ -12,6 +12,13 @@ page.on('pageerror', (error) => errors.push(error.message));
 const results = [];
 try {
   await page.goto('http://127.0.0.1:4173/');
+  // Keep these Demo geometry/contrast checks explicit after validating V4 startup.
+  await expect(page.locator('.workspace-nav [data-workspace="EXPLORE"]')).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.locator('#explore-viewport canvas')).toBeVisible();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.locator('#viewport canvas').waitFor();
   await page.evaluate(() => document.fonts.ready);
   for (const theme of ['light', 'dark']) {
@@ -43,6 +50,18 @@ try {
             height: r.height,
           };
         };
+        const textRects = (element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return [...range.getClientRects()].map((r) => ({
+            top: r.top,
+            bottom: r.bottom,
+            left: r.left,
+            right: r.right,
+            width: r.width,
+            height: r.height,
+          }));
+        };
         const font = (selector) => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
         return {
           viewportScale: visualViewport.scale,
@@ -57,6 +76,31 @@ try {
           panel: rect('#journey-panel'),
           canvas: rect('#viewport'),
           framing: rect('#scene-framing'),
+          headingParts: ['#breadcrumbs', '#scene-title', '#scene-subtitle'].flatMap((selector) =>
+            textRects(document.querySelector(selector)),
+          ),
+          // The hidden framing guide is not a clipping boundary. Check actual
+          // visible shell controls and object labels against the heading instead.
+          headingObstacles: [
+            ...document.querySelectorAll(
+              '.identity, .workspace-nav, .header-controls > *, #demo-host .object-label, #demo-host .viewport-toolbar, #demo-host .playback',
+            ),
+          ]
+            .filter((e) => e.checkVisibility())
+            .flatMap((e) => {
+              // Wrapped subtitles and label padding can share empty space. Their
+              // rendered text must not overlap; interactive shell bounds stay clear.
+              const bounds = e.classList.contains('object-label')
+                ? textRects(e)
+                : [e.getBoundingClientRect()];
+              return bounds.map((r) => ({
+                label: e.id || e.getAttribute('aria-label') || e.className,
+                top: r.top,
+                bottom: r.bottom,
+                left: r.left,
+                right: r.right,
+              }));
+            }),
           headerBorder: getComputedStyle(document.querySelector('.masthead')).borderBottomWidth,
           headingOutsideMain: !document
             .querySelector('main')
@@ -74,10 +118,21 @@ try {
       assert(measurements.headingOutsideMain);
       assert.equal(measurements.introPosition, 'absolute');
       if (width > 980) assert(measurements.panel.top < 170, `${theme} ${width}: workspace pushed down`);
-      assert(
-        measurements.framing.top >= measurements.intro.bottom,
-        `${theme} ${width}: heading/framing overlap`,
-      );
+      assert(measurements.framing.top >= 0 && measurements.framing.bottom <= height);
+      assert(measurements.framing.width > 0 && measurements.framing.height > 0);
+      for (const obstacle of measurements.headingObstacles) {
+        // The full-width intro container includes empty space on either side.
+        const overlaps = measurements.headingParts.some(
+          (part) =>
+            part.width > 0 &&
+            part.height > 0 &&
+            obstacle.left < part.right &&
+            obstacle.right > part.left &&
+            obstacle.top < part.bottom &&
+            obstacle.bottom > part.top,
+        );
+        assert(!overlaps, `${theme} ${width}: heading overlaps ${obstacle.label}`);
+      }
       assert.equal(measurements.headerBorder, '0px');
       assert.equal(measurements.canvas.top, 0);
       assert.equal(measurements.canvas.left, 0);

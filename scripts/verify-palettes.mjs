@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const folder = 'artifacts/palettes';
@@ -7,6 +7,13 @@ const browser = await chromium.launch({ channel: process.platform === 'win32' ? 
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
 try {
   await page.goto('http://127.0.0.1:4173/');
+  // Palettes are shared; the existing geometry assertions belong to Demo.
+  await expect(page.locator('.workspace-nav [data-workspace="EXPLORE"]')).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.locator('#explore-viewport canvas')).toBeVisible();
+  await page.locator('.workspace-nav [data-workspace="DEMO"]').click();
   await page.locator('#viewport canvas').waitFor();
   for (const mode of ['light', 'dark']) {
     if (mode === 'dark') await page.locator('#theme').click();
